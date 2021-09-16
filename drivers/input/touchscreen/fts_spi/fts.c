@@ -2802,39 +2802,24 @@ static ssize_t fts_grip_area_store(struct device *dev,
 	return count;
 }
 #ifdef FTS_FOD_AREA_REPORT
-static ssize_t fts_fod_test_store(struct device *dev,
+static ssize_t fts_fod_status_store(struct device *dev,
 				     struct device_attribute *attr,
 				     const char *buf, size_t count)
 {
-	int value = 0;
 	struct fts_ts_info *info = dev_get_drvdata(dev);
 
-	logError(1, " %s %s,buf:%s,count:%zu\n", tag, __func__, buf, count);
-	sscanf(buf, "%u", &value);
-	if (value) {
-		input_report_key(info->input_dev, BTN_INFO, 1);
-		mi_disp_set_fod_queue_work(1, true);
-		info->fod_pressed = true;
-		input_sync(info->input_dev);
-		input_mt_slot(info->input_dev, 0);
-		input_mt_report_slot_state(info->input_dev, MT_TOOL_FINGER, 1);
-		input_report_key(info->input_dev, BTN_TOUCH, 1);
-		input_report_key(info->input_dev, BTN_TOOL_FINGER, 1);
-		input_report_abs(info->input_dev, ABS_MT_TRACKING_ID, 0);
-		input_report_abs(info->input_dev, ABS_MT_WIDTH_MINOR, 1);
-		input_report_abs(info->input_dev, ABS_MT_POSITION_X, CENTER_X);
-		input_report_abs(info->input_dev, ABS_MT_POSITION_Y, CENTER_Y);
-		input_sync(info->input_dev);
-	} else {
-		input_mt_slot(info->input_dev, 0);
-		input_report_abs(info->input_dev, ABS_MT_WIDTH_MINOR, 0);
-		input_mt_report_slot_state(info->input_dev, MT_TOOL_FINGER, 0);
-		input_report_abs(info->input_dev, ABS_MT_TRACKING_ID, -1);
-		input_report_key(info->input_dev, BTN_INFO, 0);
-		mi_disp_set_fod_queue_work(0, true);
-		input_sync(info->input_dev);
-	}
+	sscanf(buf, "%u", &info->fod_status);
+	queue_work(info->event_wq, &info->mode_handler_work);
+
 	return count;
+}
+
+static ssize_t fts_fod_status_show(struct device *dev,
+                                     struct device_attribute *attr, char *buf)
+{
+        struct fts_ts_info *info = dev_get_drvdata(dev);
+
+        return snprintf(buf, TSP_BUF_SIZE, "%d\n", info->fod_status);
 }
 #endif
 static ssize_t fts_ellipse_data_show(struct device *dev,
@@ -3292,7 +3277,7 @@ static struct attribute *fts_attr_group[] = {
 };
 
 #ifdef FTS_FOD_AREA_REPORT
-static DEVICE_ATTR(fod_test, (S_IRUGO | S_IWUSR | S_IWGRP), NULL, fts_fod_test_store);
+static DEVICE_ATTR(fod_status, (S_IRUGO | S_IWUSR | S_IWGRP), fts_fod_status_show, fts_fod_status_store);
 #endif
 static DEVICE_ATTR(ellipse_data, (S_IRUGO), fts_ellipse_data_show, NULL);
 
@@ -7758,9 +7743,9 @@ static int fts_probe(struct spi_device *client)
 	info->fod_icon_status = 1;
 	error =
 	    sysfs_create_file(&info->fts_touch_dev->kobj,
-			      &dev_attr_fod_test.attr);
+			      &dev_attr_fod_status.attr);
 	if (error) {
-		logError(1, "%s ERROR: Failed to create fod_test sysfs group!\n", tag);
+		logError(1, "%s ERROR: Failed to create fod_status sysfs group!\n", tag);
 	}
 #endif
 	error =
