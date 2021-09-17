@@ -2022,7 +2022,9 @@ int sps_register_bam_device(const struct sps_bam_props *bam_props,
 {
 	struct sps_bam *bam = NULL;
 	void __iomem *virt_addr = NULL;
+#ifdef CONFIG_IPC_LOGGING
 	char bam_name[MAX_MSG_LEN];
+#endif
 	u32 manage;
 	int ok;
 	int result;
@@ -2113,6 +2115,7 @@ int sps_register_bam_device(const struct sps_bam_props *bam_props,
 	if (virt_addr != NULL)
 		bam->props.virt_addr = virt_addr;
 
+#ifdef CONFIG_IPC_LOGGING
 	snprintf(bam_name, sizeof(bam_name), "sps_bam_%pa_0",
 					&bam->props.phys_addr);
 	bam->ipc_log0 = ipc_log_context_create(SPS_IPC_LOGPAGES,
@@ -2152,6 +2155,7 @@ int sps_register_bam_device(const struct sps_bam_props *bam_props,
 	if (!bam->ipc_log4)
 		SPS_ERR(sps, "unable to create IPC Log 4 for bam %pa\n",
 				&bam->props.phys_addr);
+#endif
 
 	if (bam_props->ipc_loglevel)
 		bam->ipc_loglevel = bam_props->ipc_loglevel;
@@ -2927,6 +2931,7 @@ static int __init sps_init(void)
 	if (sps == NULL)
 		return -ENOMEM;
 
+#ifdef CONFIG_IPC_LOGGING
 	sps->ipc_log0 = ipc_log_context_create(SPS_IPC_LOGPAGES,
 							"sps_ipc_log0", 0);
 	if (!sps->ipc_log0)
@@ -2947,6 +2952,7 @@ static int __init sps_init(void)
 				SPS_IPC_REG_DUMP_FACTOR, "sps_ipc_log4", 0);
 	if (!sps->ipc_log4)
 		pr_err("Failed to create IPC log4\n");
+#endif
 
 	ret = platform_driver_register(&msm_sps_driver);
 
