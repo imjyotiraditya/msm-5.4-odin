@@ -65,7 +65,6 @@
 #define CAM_CCI_TIMEOUT_DUMP_EN   BIT(2)
 
 #define CCI_VERSION_1_2_9 0x10020009
-#define REPORT_IDSIZE 16
 enum cci_i2c_sync {
 	MSM_SYNC_DISABLE,
 	MSM_SYNC_ENABLE,
@@ -274,6 +273,7 @@ struct cam_sensor_cci_client {
 	uint16_t retries;
 	uint16_t id_map;
 	uint16_t cci_device;
+	uint16_t disable_optmz; //xiaomi add the flag to disable CCI optimization
 };
 
 struct cam_cci_ctrl {

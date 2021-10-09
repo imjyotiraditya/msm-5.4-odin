@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2020, The Linux Foundation. All rights reserved.
  */
 
 #ifndef _CPASTOP_V570_200_H_
@@ -270,7 +270,7 @@ static struct cam_camnoc_specific
 			.access_type = CAM_REG_TYPE_READ_WRITE,
 			.masked_value = 0,
 			.offset = 0xA30, /* IFE_LINEAR_PRIORITYLUT_LOW */
-			.value = 0x66666666,
+			.value = 0x66665433,
 		},
 		.priority_lut_high = {
 			.enable = true,
@@ -402,7 +402,7 @@ static struct cam_camnoc_specific
 			.access_type = CAM_REG_TYPE_READ_WRITE,
 			.masked_value = 0,
 			.offset = 0x1430, /* IFE_RDI_WR_0_PRIORITYLUT_LOW */
-			.value = 0x66666666,
+			.value = 0x66665433,
 		},
 		.priority_lut_high = {
 			.enable = true,
@@ -468,7 +468,7 @@ static struct cam_camnoc_specific
 			.access_type = CAM_REG_TYPE_READ_WRITE,
 			.masked_value = 0,
 			.offset = 0x1A30, /* IFE_UBWC_STATS_0_PRIORITYLUT_LOW */
-			.value = 0x66666666,
+			.value = 0x66665433,
 		},
 		.priority_lut_high = {
 			.enable = true,
@@ -595,14 +595,14 @@ static struct cam_camnoc_specific
 			.access_type = CAM_REG_TYPE_READ_WRITE,
 			.masked_value = 0,
 			.offset = 0x2220, /* IPE0_RD_QOSGEN_SHAPING_LOW */
-			.value = 0x12121212,
+			.value = 0x13131313,
 		},
 		.qosgen_shaping_high = {
 			.enable = true,
 			.access_type = CAM_REG_TYPE_READ_WRITE,
 			.masked_value = 0,
 			.offset = 0x2224, /* IPE0_RD_QOSGEN_SHAPING_HIGH */
-			.value = 0x12121212,
+			.value = 0x13131313,
 		},
 	},
 	{
@@ -662,20 +662,19 @@ static struct cam_camnoc_specific
 			.offset = 0x2308, /* IPE1_BPS_RD_QOSGEN_MAINCTL */
 			.value = 0x2,
 		},
-		//  TITAN_A_CAMNOC_cam_noc_amm_nrt_niu_0_qosgen_Shaping_Low
 		.qosgen_shaping_low = {
 			.enable = true,
 			.access_type = CAM_REG_TYPE_READ_WRITE,
 			.masked_value = 0,
 			.offset = 0x2320, /* IPE1_BPS_RD_QOSGEN_SHAPING_LOW */
-			.value = 0x23232323,
+			.value = 0x24242424,
 		},
 		.qosgen_shaping_high = {
 			.enable = true,
 			.access_type = CAM_REG_TYPE_READ_WRITE,
 			.masked_value = 0,
 			.offset = 0x2324, /* IPE1_BPS_RD_QOSGEN_SHAPING_HIGH */
-			.value = 0x23232323,
+			.value = 0x24242424,
 		},
 	},
 	{
@@ -882,8 +881,4 @@ static struct cam_camnoc_info cam570_cpas200_camnoc_info = {
 	.errata_wa_list = &cam570_cpas200_errata_wa_list,
 };
 
-static struct cam_cpas_camnoc_qchannel cam570_cpas200_qchannel_info = {
-	.qchannel_ctrl   = 0x5C,
-	.qchannel_status = 0x60,
-};
 #endif /* _CPASTOP_V570_200_H_ */

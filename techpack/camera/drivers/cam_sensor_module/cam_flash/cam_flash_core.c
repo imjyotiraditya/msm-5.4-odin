@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2017-2020, The Linux Foundation. All rights reserved.
  */
 
 #include <linux/module.h>
@@ -1263,19 +1263,18 @@ update_req_mgr:
 		CAM_PKT_NOP_OPCODE) ||
 		((csl_packet->header.op_code & 0xFFFFF) ==
 		CAM_FLASH_PACKET_OPCODE_SET_OPS)) {
-		memset(&add_req, 0, sizeof(add_req));
 		add_req.link_hdl = fctrl->bridge_intf.link_hdl;
 		add_req.req_id = csl_packet->header.request_id;
 		add_req.dev_hdl = fctrl->bridge_intf.device_hdl;
 
 		if ((csl_packet->header.op_code & 0xFFFFF) ==
-			CAM_FLASH_PACKET_OPCODE_SET_OPS) {
-			add_req.trigger_eof = true;
-			add_req.skip_at_sof = 1;
-		}
+			CAM_FLASH_PACKET_OPCODE_SET_OPS)
+			add_req.skip_before_applying = 1;
+		else
+			add_req.skip_before_applying = 0;
 
 		if (fctrl->bridge_intf.crm_cb &&
-			fctrl->bridge_intf.crm_cb->add_req) {
+			fctrl->bridge_intf.crm_cb->add_req)
 			rc = fctrl->bridge_intf.crm_cb->add_req(&add_req);
 			if  (rc) {
 				CAM_ERR(CAM_FLASH,
@@ -1283,10 +1282,7 @@ update_req_mgr:
 					csl_packet->header.request_id);
 				return rc;
 			}
-			CAM_DBG(CAM_FLASH,
-				"add req %lld to req_mgr, trigger_eof %d",
-				add_req.req_id, add_req.trigger_eof);
-		}
+		CAM_DBG(CAM_FLASH, "add req to req_mgr= %lld", add_req.req_id);
 	}
 	return rc;
 }
@@ -1300,6 +1296,7 @@ int cam_flash_pmic_pkt_parser(struct cam_flash_ctrl *fctrl, void *arg)
 	uint32_t frm_offset = 0;
 	size_t len_of_buffer;
 	size_t remain_len;
+	bool is_trigger_eof = true; // xiaomi add
 	struct cam_control *ioctl_ctrl = NULL;
 	struct cam_packet *csl_packet = NULL;
 	struct cam_cmd_buf_desc *cmd_desc = NULL;
@@ -1511,8 +1508,7 @@ int cam_flash_pmic_pkt_parser(struct cam_flash_ctrl *fctrl, void *arg)
 		switch (cmn_hdr->cmd_type) {
 		case CAMERA_SENSOR_FLASH_CMD_TYPE_FIRE: {
 			CAM_DBG(CAM_FLASH,
-				"CAMERA_SENSOR_FLASH_CMD_TYPE_FIRE cmd called, req:%lld",
-				csl_packet->header.request_id);
+				"CAMERA_SENSOR_FLASH_CMD_TYPE_FIRE cmd called");
 			if ((fctrl->flash_state == CAM_FLASH_STATE_INIT) ||
 				(fctrl->flash_state ==
 					CAM_FLASH_STATE_ACQUIRE)) {
@@ -1529,6 +1525,7 @@ int cam_flash_pmic_pkt_parser(struct cam_flash_ctrl *fctrl, void *arg)
 
 			flash_operation_info =
 				(struct cam_flash_set_on_off *) cmd_buf;
+			is_trigger_eof = (bool)flash_operation_info->is_trigger_eof; // xiaomi add
 			if (!flash_operation_info) {
 				CAM_ERR(CAM_FLASH,
 					"flash_operation_info Null");
@@ -1550,12 +1547,10 @@ int cam_flash_pmic_pkt_parser(struct cam_flash_ctrl *fctrl, void *arg)
 				= flash_operation_info->led_current_ma[i];
 
 			CAM_DBG(CAM_FLASH,
-				"FLASH_CMD_TYPE op:%d, req:%lld",
-				flash_data->opcode, csl_packet->header.request_id);
+				"FLASH_CMD_TYPE op:%d", flash_data->opcode);
 
 			if (flash_data->opcode ==
 				CAMERA_SENSOR_FLASH_OP_FIREDURATION) {
-				add_req.trigger_eof = true;
 				/* Active time for the preflash */
 				flash_data->flash_active_time_ms =
 				(flash_operation_info->time_on_duration_ns)
@@ -1746,34 +1741,29 @@ int cam_flash_pmic_pkt_parser(struct cam_flash_ctrl *fctrl, void *arg)
 		CAM_PKT_NOP_OPCODE) ||
 		((csl_packet->header.op_code & 0xFFFFF) ==
 		CAM_FLASH_PACKET_OPCODE_SET_OPS)) {
-		memset(&add_req, 0, sizeof(add_req));
 		add_req.link_hdl = fctrl->bridge_intf.link_hdl;
 		add_req.req_id = csl_packet->header.request_id;
 		add_req.dev_hdl = fctrl->bridge_intf.device_hdl;
 
 		if ((csl_packet->header.op_code & 0xFFFFF) ==
 			CAM_FLASH_PACKET_OPCODE_SET_OPS) {
-			add_req.trigger_eof = true;
-			if (flash_data->opcode == CAMERA_SENSOR_FLASH_OP_OFF) {
-				add_req.skip_at_sof = 1;
-				add_req.skip_at_eof = 1;
-			} else
-				add_req.skip_at_sof = 1;
-		}
+			add_req.skip_before_applying |= SKIP_NEXT_FRAME;
+			add_req.trigger_eof = is_trigger_eof; // xiaomi modify
 
-		if (fctrl->bridge_intf.crm_cb &&
-			fctrl->bridge_intf.crm_cb->add_req) {
-			rc = fctrl->bridge_intf.crm_cb->add_req(&add_req);
-			if  (rc) {
-				CAM_ERR(CAM_FLASH,
-					"Failed in adding request: %llu to request manager",
-					csl_packet->header.request_id);
-				return rc;
-			}
-			CAM_DBG(CAM_FLASH,
-				"add req %lld to req_mgr, trigger_eof %d",
-				add_req.req_id, add_req.trigger_eof);
+			if (flash_data && (flash_data->opcode !=
+				CAMERA_SENSOR_FLASH_OP_FIREDURATION))
+				add_req.skip_before_applying |= 1;
+			else
+				add_req.skip_before_applying = 0;
+		} else {
+			add_req.skip_before_applying = 0;
 		}
+		CAM_DBG(CAM_FLASH,
+			"add req to req_mgr= %lld:: trigger_eof: %d",
+			add_req.req_id, add_req.trigger_eof);
+		if (fctrl->bridge_intf.crm_cb &&
+			fctrl->bridge_intf.crm_cb->add_req)
+			fctrl->bridge_intf.crm_cb->add_req(&add_req);
 	}
 
 	return rc;

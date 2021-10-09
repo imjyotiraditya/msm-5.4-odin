@@ -45,7 +45,7 @@
 #define CAM_RPMH_BCM_MNOC_INDEX 4
 #define CAM_RPMH_BCM_INFO_MAX   5
 
-#define CAM_CPAS_MONITOR_MAX_ENTRIES   60
+#define CAM_CPAS_MONITOR_MAX_ENTRIES   100
 #define CAM_CPAS_INC_MONITOR_HEAD(head, ret) \
 	div_u64_rem(atomic64_add_return(1, head),\
 	CAM_CPAS_MONITOR_MAX_ENTRIES, (ret))
@@ -70,8 +70,6 @@ enum cam_cpas_access_type {
  * @power_off: Function pointer for hw core specific power off settings
  * @setup_qos_settings: Function pointer for hw to select a specific qos header
  * @print_poweron_settings: Function pointer for hw to print poweron settings
- * @qchannel_handshake: Function pointer for hw core specific qchannel
- *                      handshake settings
  *
  */
 struct cam_cpas_internal_ops {
@@ -87,7 +85,6 @@ struct cam_cpas_internal_ops {
 	int (*setup_qos_settings)(struct cam_hw_info *cpas_hw,
 		uint32_t selection_mask);
 	int (*print_poweron_settings)(struct cam_hw_info *cpas_hw);
-	int (*qchannel_handshake)(struct cam_hw_info *cpas_hw, bool power_on);
 };
 
 /**
@@ -217,6 +214,8 @@ struct cam_cpas_axi_port_debug_info {
  *           This indicates requested clock plan
  * @be_mnoc: RPMH MNOC BCM BE (back-end) status register value.
  *           This indicates actual current clock plan
+ * @be_shub: RPMH SHUB BCM BE (back-end) status register value.
+ *           This indicates actual current clock plan
  * @camnoc_fill_level: Camnoc fill level register info
  */
 struct cam_cpas_monitor {
@@ -230,6 +229,7 @@ struct cam_cpas_monitor {
 	uint32_t                            be_ddr;
 	uint32_t                            fe_mnoc;
 	uint32_t                            be_mnoc;
+	uint32_t                            be_shub;
 	uint32_t                            camnoc_fill_level[5];
 };
 
