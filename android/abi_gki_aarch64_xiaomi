@@ -6,7 +6,10 @@
   regmap_raw_write
   regmap_raw_write_async
   regulator_bulk_enable
+  snd_compr_stop_error
   snd_pcm_format_physical_width
+  snd_soc_component_disable_pin
+  snd_soc_component_force_enable_pin
   snd_soc_get_volsw_range
   snd_soc_info_volsw_range
   snd_soc_put_volsw_range
@@ -22,6 +25,20 @@
   __iio_device_register
   __kfifo_to_user
   iio_device_alloc
+
+# required by us_prox_iio.ko
+  iio_alloc_pollfunc
+  iio_buffer_init
+  iio_buffer_put
+  iio_dealloc_pollfunc
+  iio_device_attach_buffer
+  iio_push_to_buffers
+  iio_trigger_alloc
+  iio_trigger_free
+  __iio_trigger_register
+  iio_trigger_unregister
+  iio_triggered_buffer_postenable
+  iio_triggered_buffer_predisable
 
 # required by tfa98xx_dlkm.ko
   device_remove_bin_file
