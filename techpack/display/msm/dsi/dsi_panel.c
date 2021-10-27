@@ -646,15 +646,25 @@ static int dsi_panel_update_doze(struct dsi_panel *panel) {
 		return 0;
 	}
 
-	if (panel->doze_enabled) {
+	if (panel->doze_enabled && panel->doze_mode == DSI_DOZE_HBM) {
 		rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_MI_DOZE_HBM);
 		if (rc)
 			DSI_ERR("[%s] failed to send doze hbm cmd, rc=%d\n",
 					panel->name, rc);
-	} else {
+	} else if (panel->doze_enabled && panel->doze_mode == DSI_DOZE_LPM) {
+		rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_MI_DOZE_LBM);
+		if (rc)
+			DSI_ERR("[%s] failed to send doze lbm cmd, rc=%d\n",
+					panel->name, rc);
+	} else if (!panel->doze_enabled && panel->doze_mode == DSI_DOZE_HBM) {
 		rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_MI_DOZE_HBM_NOLP);
 		if (rc)
-			DSI_ERR("[%s] failed to send nolp cmd, rc=%d\n",
+			DSI_ERR("[%s] failed to send doze hbm nolp cmd, rc=%d\n",
+					panel->name, rc);
+	} else if (!panel->doze_enabled && panel->doze_mode == DSI_DOZE_LPM) {
+		rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_MI_DOZE_LBM_NOLP);
+		if (rc)
+			DSI_ERR("[%s] failed to send doze lbm nolp cmd, rc=%d\n",
 					panel->name, rc);
 	}
 
@@ -815,6 +825,18 @@ done:
 	mutex_unlock(&panel->panel_lock);
 
 	return rc;
+}
+
+int dsi_panel_set_doze_mode(struct dsi_panel *panel, enum dsi_doze_mode_type mode) {
+	if (panel->doze_mode == mode)
+		return 0;
+
+	panel->doze_mode = mode;
+
+	if (!panel->doze_enabled)
+		return 0;
+
+	return dsi_panel_update_doze(panel);
 }
 
 int dsi_panel_set_backlight(struct dsi_panel *panel, u32 bl_lvl)
@@ -1972,7 +1994,9 @@ const char *cmd_set_prop_map[DSI_CMD_SET_MAX] = {
 	"qcom,mdss-dsi-qsync-on-commands",
 	"qcom,mdss-dsi-qsync-off-commands",
 	"mi,mdss-dsi-doze-hbm-command",
+	"mi,mdss-dsi-doze-lbm-command",
 	"mi,mdss-dsi-doze-hbm-nolp-command",
+	"mi,mdss-dsi-doze-lbm-nolp-command",
 	"mi,mdss-dsi-local-hbm-normal-white-1000nit-command",
 	"mi,mdss-dsi-local-hbm-hlpm-white-1000nit-command",
 	"mi,mdss-dsi-local-hbm-off-to-normal-command",
@@ -2004,7 +2028,9 @@ const char *cmd_set_state_map[DSI_CMD_SET_MAX] = {
 	"qcom,mdss-dsi-qsync-on-commands-state",
 	"qcom,mdss-dsi-qsync-off-commands-state",
 	"mi,mdss-dsi-doze-hbm-command-state",
+	"mi,mdss-dsi-doze-lbm-command-state",
 	"mi,mdss-dsi-doze-hbm-nolp-command-state",
+	"mi,mdss-dsi-doze-lbm-nolp-command-state",
 	"mi,mdss-dsi-local-hbm-normal-white-1000nit-command-state",
 	"mi,mdss-dsi-local-hbm-hlpm-white-1000nit-command-state",
 	"mi,mdss-dsi-local-hbm-off-to-normal-command-state",
@@ -3775,14 +3801,126 @@ static ssize_t sysfs_fod_ui_read(struct device *dev, struct device_attribute *at
 	return snprintf(buf, PAGE_SIZE, "%d\n", status);
 }
 
+static ssize_t sysfs_doze_status_read(struct device *dev, struct device_attribute *attr,
+				      char *buf)
+{
+	struct dsi_display *display;
+	struct dsi_panel *panel;
+	bool status;
+
+	display = dev_get_drvdata(dev);
+	if (!display) {
+		pr_err("Invalid display\n");
+		return -EINVAL;
+	}
+
+	panel = display->panel;
+
+	mutex_lock(&panel->panel_lock);
+	status = panel->doze_enabled;
+	mutex_unlock(&panel->panel_lock);
+
+	return snprintf(buf, PAGE_SIZE, "%d\n", status);
+}
+
+static ssize_t sysfs_doze_status_write(struct device *dev, struct device_attribute *attr,
+				       const char *buf, size_t count)
+{
+	struct dsi_display *display;
+	struct dsi_panel *panel;
+	bool status;
+	int rc = 0;
+
+	display = dev_get_drvdata(dev);
+	if (!display) {
+		pr_err("Invalid display\n");
+		return -EINVAL;
+	}
+
+	rc = kstrtobool(buf, &status);
+	if (rc) {
+		pr_err("%s: kstrtobool failed. rc=%d\n", __func__, rc);
+		return rc;
+	}
+
+	panel = display->panel;
+
+	mutex_lock(&panel->panel_lock);
+	dsi_panel_set_doze_status(panel, status);
+	mutex_unlock(&panel->panel_lock);
+
+	return count;
+}
+
+static ssize_t sysfs_doze_mode_read(struct device *dev, struct device_attribute *attr,
+				    char *buf)
+{
+	enum dsi_doze_mode_type doze_mode;
+	struct dsi_display *display;
+	struct dsi_panel *panel;
+
+	display = dev_get_drvdata(dev);
+	if (!display) {
+		pr_err("Invalid display\n");
+		return -EINVAL;
+	}
+
+	panel = display->panel;
+
+	mutex_lock(&panel->panel_lock);
+	doze_mode = panel->doze_mode;
+	mutex_unlock(&panel->panel_lock);
+
+	return snprintf(buf, PAGE_SIZE, "%d\n", doze_mode);
+}
+
+static ssize_t sysfs_doze_mode_write(struct device *dev, struct device_attribute *attr,
+				     const char *buf, size_t count)
+{
+	struct dsi_display *display;
+	struct dsi_panel *panel;
+	int rc = 0;
+	int mode;
+
+	display = dev_get_drvdata(dev);
+	if (!display) {
+		pr_err("Invalid display\n");
+		return -EINVAL;
+	}
+
+	rc = kstrtoint(buf, 10, &mode);
+	if (rc) {
+		pr_err("%s: kstrtoint failed. rc=%d\n", __func__, rc);
+		return rc;
+	}
+
+	if (mode < DSI_DOZE_LPM || mode > DSI_DOZE_HBM) {
+		pr_err("%s: invalid value for doze mode\n", __func__);
+		return -EINVAL;
+	}
+
+	panel = display->panel;
+
+	mutex_lock(&panel->panel_lock);
+	dsi_panel_set_doze_mode(panel, (enum dsi_doze_mode_type) mode);
+	mutex_unlock(&panel->panel_lock);
+
+	return count;
+}
+
 static DEVICE_ATTR(fod_hbm, 0200, NULL, sysfs_fod_hbm_write);
 static DEVICE_ATTR(fod_ui, 0400, sysfs_fod_ui_read, NULL);
+static DEVICE_ATTR(doze_status, 0644, sysfs_doze_status_read, sysfs_doze_status_write);
+static DEVICE_ATTR(doze_mode, 0644, sysfs_doze_mode_read, sysfs_doze_mode_write);
 
 static struct attribute *panel_attrs[] = {
 	&dev_attr_fod_hbm.attr,
 	&dev_attr_fod_ui.attr,
+	&dev_attr_doze_status.attr,
+	&dev_attr_doze_mode.attr,
 	NULL,
 };
+
 static struct attribute_group panel_attrs_group = {
 	.attrs = panel_attrs,
 };
@@ -3943,6 +4081,7 @@ struct dsi_panel *dsi_panel_get(struct device *parent,
 	drm_panel_init(&panel->drm_panel);
 	panel->drm_panel.dev = &panel->mipi_device.dev;
 	panel->mipi_device.dev.of_node = of_node;
+	panel->doze_mode = DSI_DOZE_HBM;
 	panel->doze_enabled = false;
 	panel->doze_requested = false;
 	panel->fod_ui = false;
