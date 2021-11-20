@@ -48,7 +48,6 @@
 #define BC_WLS_FW_UPDATE_STATUS_RESP	0x42
 #define BC_WLS_FW_PUSH_BUF_RESP		0x43
 #define BC_WLS_FW_GET_VERSION		0x44
-#define BC_SHUTDOWN_NOTIFY		0x47
 #define BC_GENERIC_NOTIFY		0x80
 
 /* Generic definitions */
