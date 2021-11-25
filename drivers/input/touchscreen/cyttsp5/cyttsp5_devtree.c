@@ -584,11 +584,7 @@ static struct cyttsp5_core_platform_data *create_and_get_core_pdata(
 
 	rc = of_property_read_u32(core_node, "cy,flags", &value);
 	if (!rc) {
-#ifndef CONFIG_FACTORY_BUILD
 		pdata->flags = value;
-#else
-		pdata->flags = value | CY_CORE_FLAG_POWEROFF_ON_SLEEP;
-#endif
 	}
 
 
