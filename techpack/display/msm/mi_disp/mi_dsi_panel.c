@@ -2254,31 +2254,6 @@ int mi_dsi_panel_set_disp_param(struct dsi_panel *panel, struct disp_feature_ctl
 		mi_cfg->feature_val[DISP_FEATURE_HBM_FOD] = ctl->feature_val;
 		break;
 	case DISP_FEATURE_DOZE_BRIGHTNESS:
-#ifdef CONFIG_FACTORY_BUILD
-		if (dsi_panel_initialized(panel) &&
-			is_aod_brightness(ctl->feature_val)) {
-			if (ctl->feature_val == DOZE_BRIGHTNESS_HBM) {
-				mi_cfg->doze_brightness = DOZE_BRIGHTNESS_HBM;
-				mi_cfg->doze_brightness_backup = DOZE_BRIGHTNESS_HBM;
-				mi_dsi_update_hbm_cmd_51reg(panel, DSI_CMD_SET_MI_DOZE_HBM, mi_cfg->last_no_zero_bl_level);
-				dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_MI_DOZE_HBM);
-			} else {
-				mi_cfg->doze_brightness = DOZE_BRIGHTNESS_LBM;
-				mi_cfg->doze_brightness_backup = DOZE_BRIGHTNESS_LBM;
-				mi_dsi_update_hbm_cmd_51reg(panel, DSI_CMD_SET_MI_DOZE_LBM, mi_cfg->last_no_zero_bl_level);
-				dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_MI_DOZE_LBM);
-			}
-			mi_cfg->dimming_state = STATE_DIM_BLOCK;
-		} else {
-			if (mi_cfg->aod_nolp_command_enabled)
-				mi_dsi_panel_nolp(panel);
-			else
-				dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_NOLP);
-			mi_cfg->doze_brightness = DOZE_TO_NORMAL;
-			mi_cfg->doze_brightness_backup = DOZE_TO_NORMAL;
-			mi_cfg->dimming_state = STATE_DIM_RESTORE;
-		}
-#else
 		if (is_aod_and_panel_initialized(panel) &&
 			is_aod_brightness(ctl->feature_val)) {
 			if (ctl->feature_val == DOZE_BRIGHTNESS_HBM) {
@@ -2302,7 +2277,6 @@ int mi_dsi_panel_set_disp_param(struct dsi_panel *panel, struct disp_feature_ctl
 			mi_cfg->doze_brightness_backup = DOZE_TO_NORMAL;
 			mi_cfg->dimming_state = STATE_DIM_RESTORE;
 		}
-#endif
 		mi_cfg->feature_val[DISP_FEATURE_DOZE_BRIGHTNESS] = ctl->feature_val;
 		break;
 	case DISP_FEATURE_FOD_CALIBRATION_BRIGHTNESS:
@@ -2998,10 +2972,6 @@ int mi_disp_set_fod_queue_work(u32 fod_btn, bool from_touch)
 	struct fod_work_data *fod_data;
 	struct mi_dsi_panel_cfg *mi_cfg;
 	int fp_state = FINGERPRINT_NONE;
-
-#ifdef CONFIG_FACTORY_BUILD
-	return 0;
-#endif
 
 	if (!display || !display->panel) {
 		DISP_ERROR("invalid params\n");
