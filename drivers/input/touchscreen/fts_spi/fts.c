@@ -6391,10 +6391,6 @@ static int fts_write_charge_status(int status)
 {
 	u8 charge_disable_cmd[3] = {0xA2, 0x02, 0x00};
 	u8 charge_enable_cmd[3] = {0xA2, 0x02, 0x01};
-#if 0
-	u8 wired_charge_cmd[3] = {0xA2, 0x02, 0x01};
-	u8 wireless_charge_cmd[3] = {0xA2, 0x02, 0x02};
-#endif
 	int res;
 
 	if (!fts_info) {
@@ -6414,30 +6410,12 @@ static int fts_write_charge_status(int status)
 			logError(1, "%s %s: send charge enable cmd error\n", tag, __func__);
 
 	}
-#if 0
-	if (status == WIRED_CHARGING) {
-		res = fts_write_dma_safe(wired_charge_cmd, ARRAY_SIZE(wired_charge_cmd));
-		if (res < OK)
-			logError(1, "%s %s: send wired charge cmd error\n", tag, __func__);
-	}
-	if (status == WIRELESS_CHARGING) {
-		res = fts_write_dma_safe(wireless_charge_cmd, ARRAY_SIZE(wireless_charge_cmd));
-		if (res < OK)
-			logError(1, "%s %s: send wireless charge cmd error\n", tag, __func__);
-	}
-#endif
 	mutex_unlock(&fts_info->charge_lock);
 	return res;
 }
 
 static int fts_get_charging_status()
 {
-#if 0
-	struct power_supply *usb_psy;
-	struct power_supply *dc_psy;
-	union power_supply_propval val;
-	int rc = 0;
-#endif
 #ifdef CONFIG_QGKI_SYSTEM
 	int is_charging = 0;
 	is_charging = !!power_supply_is_system_supplied();
@@ -6446,29 +6424,6 @@ static int fts_get_charging_status()
 	else
 		return CHARGING;
 #else
-	return NOT_CHARGING;
-#endif
-#if 0
-	dc_psy = power_supply_get_by_name("dc");
-	if (dc_psy) {
-		rc = power_supply_get_property(dc_psy, POWER_SUPPLY_PROP_ONLINE, &val);
-		if (rc < 0)
-			logError(1, "%s %s Couldn't get DC online status, rc=%d\n", tag, __func__, rc);
-		else if (val.intval == 1)
-			return WIRELESS_CHARGING;
-	} else {
-		logError(1, "%s %s not found dc psy\n", tag, __func__);
-	}
-	usb_psy = power_supply_get_by_name("usb");
-	if (usb_psy) {
-		rc = power_supply_get_property(usb_psy, POWER_SUPPLY_PROP_PRESENT, &val);
-		if (rc < 0)
-			logError(1, "%s %s Couldn't get usb online status, rc=%d\n", tag, __func__, rc);
-		else if (val.intval == 1)
-			return WIRED_CHARGING;
-	} else {
-		logError(1, "%s %s not found usb psy\n", tag, __func__);
-	}
 	return NOT_CHARGING;
 #endif
 }

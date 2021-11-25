@@ -1348,21 +1348,6 @@ static ssize_t fts_driver_test_write(struct file *file, const char __user *buf,
 				res = ERROR_OP_NOT_ALLOW;
 			}
 			break;
-#if 0
-		case CMD_GETFWVER:
-			res = getFirmwareVersion(&fw_version, &config_id);
-			if (res < OK) {
-				logError(1,
-					 "%s Error reading firmware version and config id ERROR %02X\n",
-					 tag, res);
-			} else {
-				logError(0,
-					 "%s getFirmwareVersion Finished! \n",
-					 tag);
-				size += (4) * sizeof(u8);
-			}
-			break;
-#endif
 
 		case CMD_FLASHUNLOCK:
 			res = flash_unlock();
