@@ -51,6 +51,4 @@ void mi_sde_connector_update_layer_state(struct drm_connector *connector,
 int mi_sde_connector_gir_fence(struct drm_connector *connector);
 int mi_sde_connector_fod_hbm_fence(struct drm_connector *connector);
 
-void mi_sde_connector_fod_notify(struct drm_connector *conn);
-
 #endif /* _MI_SDE_CONNECTOR_H_ */

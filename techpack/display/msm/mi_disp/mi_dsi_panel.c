@@ -2802,16 +2802,6 @@ static void mi_sde_connector_fod_lhbm_notify(struct drm_connector *conn, int fod
 				&& !display->panel->mi_cfg.fod_hbm_layer_enabled) {
 				return;
 			}
-			/* Make sure icon was displayed on panel before notifying
-			 * fingerprint to capture image */
-			if (display->panel->mi_cfg.fod_hbm_layer_enabled) {
-#if 0
-				sde_encoder_wait_for_event(c_conn->encoder,
-						MSM_ENC_TX_COMPLETE);
-				sde_encoder_wait_for_event(c_conn->encoder,
-						MSM_ENC_VBLANK);
-#endif
-			}
 			SDE_ATRACE_BEGIN("mi_sde_connector_fod_ui_ready");
 			mi_sde_connector_fod_ui_ready(display, 2, 1);
 			SDE_ATRACE_END("mi_sde_connector_fod_ui_ready");
