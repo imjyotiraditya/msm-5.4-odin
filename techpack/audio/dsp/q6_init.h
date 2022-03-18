@@ -32,11 +32,6 @@ int crus_sp_init(void);
 int msm_mdf_init(void);
 void msm_mdf_exit(void);
 #else
-/* for elus start */
-#ifdef CONFIG_ELUS_PROXIMITY
-int elliptic_driver_init(void);
-#endif
-/* for elus end */
 /* for mius start */
 #ifdef CONFIG_MIUS_PROXIMITY
 int mius_driver_init(void);
@@ -83,11 +78,6 @@ void audio_cal_exit(void);
 void voice_exit(void);
 void q6lsm_exit(void);
 void q6asm_exit(void);
-/* for elus start */
-#ifdef CONFIG_ELUS_PROXIMITY
-int elliptic_driver_exit(void);
-#endif
-/* for elus end */
 /* for mius start */
 #ifdef CONFIG_MIUS_PROXIMITY
 int mius_driver_exit(void);

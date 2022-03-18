@@ -31,10 +31,6 @@
 #include <dsp/q6core.h>
 #include <dsp/q6common.h>
 #include <dsp/audio_cal_utils.h>
-#ifdef CONFIG_ELUS_PROXIMITY
-#include <dsp/apr_elliptic.h>
-#include <elliptic/elliptic_mixer_controls.h>
-#endif
 /* for mius start */
 #ifdef CONFIG_MIUS_PROXIMITY
 #include <dsp/apr_mius.h>
@@ -43316,11 +43312,6 @@ static int msm_routing_probe(struct snd_soc_component *component)
 #ifdef CONFIG_MSM_CSPL
 	msm_crus_pb_add_controls(component);
 #endif
-	/* for elus start */
-#ifdef CONFIG_ELUS_PROXIMITY
-	elliptic_add_component_controls(component);
-#endif
-	/* for elus end */
 
 	snd_soc_add_component_controls(component, pll_clk_drift_controls,
 				      ARRAY_SIZE(pll_clk_drift_controls));

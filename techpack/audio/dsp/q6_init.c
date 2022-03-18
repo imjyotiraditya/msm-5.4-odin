@@ -26,11 +26,6 @@ static int __init audio_q6_init(void)
 #ifdef CONFIG_MSM_CSPL
 	crus_sp_init();
 #endif
-/* for elus start */
-#ifdef CONFIG_ELUS_PROXIMITY
-	elliptic_driver_init();
-#endif
-/* for elus end */
 	msm_mdf_init();
 	voice_mhi_init();
 	digital_cdc_rsc_mgr_init();
@@ -61,11 +56,6 @@ static void __exit audio_q6_exit(void)
 	adm_exit();
 	rtac_exit();
 	audio_cal_exit();
-/* for elus start */
-#ifdef CONFIG_ELUS_PROXIMITY
-	elliptic_driver_exit();
-#endif
-/* for elus end */
 	adsp_err_exit();
 	voice_mhi_exit();
 /* for mius start */
