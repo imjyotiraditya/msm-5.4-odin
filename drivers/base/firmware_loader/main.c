@@ -1,3 +1,5 @@
+
+
 // SPDX-License-Identifier: GPL-2.0
 /*
  * main.c - Multi purpose firmware loading support
@@ -787,10 +789,6 @@ _request_firmware(const struct firmware **firmware_p, const char *name,
 #endif
 
 	if (ret) {
-		if (!(opt_flags & FW_OPT_NO_WARN))
-			dev_warn(device,
-				 "Direct firmware load for %s failed with error %d\n",
-				 name, ret);
 		ret = firmware_fallback_sysfs(fw, name, device, opt_flags, ret);
 	} else
 		ret = assign_fw(fw, device, opt_flags);
