@@ -1,9 +1,4 @@
 // SPDX-License-Identifier: GPL-2.0
-/*
- * TEE driver for goodix fingerprint sensor
- * Copyright (C) 2016 Goodix
- * Copyright (C) 2022 Jebaitedneko <Jebaitedneko@gmail.com>
- */
 
 #include <linux/delay.h>
 #include <linux/device.h>
@@ -32,7 +27,7 @@ static struct gf_dev {
 	struct platform_device *spi;
 	struct input_dev *input;
 	struct regulator *vreg;
-	signed irq_gpio, rst_gpio;
+	signed irq_gpio, rst_gpio, pwr_gpio;
 	int irq, irq_enabled;
 } gf;
 
@@ -89,6 +84,10 @@ static inline irqreturn_t gf_irq(int irq, void *handle) {
 }
 
 static inline void gf_setup(struct gf_dev *gf_dev) {
+	gf_dev->pwr_gpio = of_get_named_gpio(gf_dev->spi->dev.of_node,
+		"fp-gpio-pwr", 0);
+	gpio_request(gf_dev->pwr_gpio, "goodix_pwr");
+	gpio_direction_output(gf_dev->pwr_gpio, 1);
 	gf_dev->rst_gpio = of_get_named_gpio(gf_dev->spi->dev.of_node,
 		"goodix,gpio-reset", 0);
 	gpio_request(gf_dev->rst_gpio, "gpio-reset");
@@ -101,9 +100,9 @@ static inline void gf_setup(struct gf_dev *gf_dev) {
 	if (request_threaded_irq(gf_dev->irq, NULL, gf_irq,
 			IRQF_TRIGGER_RISING | IRQF_ONESHOT, "gf", gf_dev))
 		irq_switch(gf_dev, 1);
-	gf_dev->vreg = regulator_get(NULL, "pm8150_l17");
+	gf_dev->vreg = regulator_get(NULL, "l11c_vdd");
 	if (!regulator_is_enabled(gf_dev->vreg)) {
-		regulator_set_voltage(gf_dev->vreg, 3000000, 3000000);
+		regulator_set_load(gf_dev->vreg, 200000);
 		if (regulator_enable(gf_dev->vreg))
 			return;
 	}
@@ -119,6 +118,8 @@ static inline void gf_cleanup(struct gf_dev *gf_dev) {
 		gpio_free(gf_dev->irq_gpio);
 	if (gpio_is_valid(gf_dev->rst_gpio))
 		gpio_free(gf_dev->rst_gpio);
+	if (gpio_is_valid(gf_dev->pwr_gpio))
+		gpio_free(gf_dev->pwr_gpio);
 	if (regulator_is_enabled(gf_dev->vreg)) {
 		regulator_disable(gf_dev->vreg);
 		regulator_put(gf_dev->vreg);
@@ -204,7 +205,7 @@ static inline int gf_probe(struct platform_device *pdev) {
 	unsigned long minor = find_first_zero_bit(minors, N_SPI_MINORS);
 	INIT_LIST_HEAD(&gf_dev->device_entry);
 	gf_dev->spi = pdev;
-	gf_dev->irq_gpio = gf_dev->rst_gpio = -EINVAL;
+	gf_dev->irq_gpio = gf_dev->rst_gpio = gf_dev->pwr_gpio = -EINVAL;
 	gf_dev->devt = MKDEV(SPIDEV_MAJOR, minor);
 	mutex_lock(&gf_lock);
 	device_create(gf_class, &gf_dev->spi->dev, gf_dev->devt, gf_dev,
@@ -266,8 +267,6 @@ static inline void __exit gf_exit(void) {
 }
 module_exit(gf_exit);
 
-MODULE_AUTHOR("Jiangtao Yi, <yijiangtao@goodix.com>");
-MODULE_AUTHOR("Jandy Gou, <gouqingsong@goodix.com>");
 MODULE_AUTHOR("Jebaitedneko, <Jebaitedneko@gmail.com>");
 MODULE_DESCRIPTION("goodix fingerprint sensor device driver");
-MODULE_LICENSE("GPL");
+MODULE_LICENSE("GPL v2");
