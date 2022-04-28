@@ -623,6 +623,21 @@ error:
 	return rc;
 }
 
+static int dsi_panel_update_last_backlight(struct dsi_panel *panel,
+	u32 bl_level)
+{
+	int rc = 0;
+
+	if (!panel) {
+		DSI_ERR("invalid params\n");
+		return -EINVAL;
+	}
+
+	panel->last_bl_level = bl_level != 0 ? bl_level : 100;
+
+	return rc;
+}
+
 static int dsi_panel_update_doze(struct dsi_panel *panel) {
 	int rc = 0;
 
@@ -743,7 +758,7 @@ static int dsi_panel_set_fod_hbm(struct dsi_panel *panel, bool status)
 		} else {
 			rc = dsi_panel_update_cmd_reg51(panel,
 							DSI_CMD_SET_MI_LOCAL_HBM_NORMAL_WHITE_1000NIT,
-							panel->bl_config.bl_level);
+							panel->last_bl_level);
 			rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_MI_LOCAL_HBM_NORMAL_WHITE_1000NIT);
 			if (rc)
 				DSI_ERR("[%s] failed to send local hbm on cmd, rc=%d\n",
@@ -810,6 +825,8 @@ int dsi_panel_set_backlight(struct dsi_panel *panel, u32 bl_lvl)
 	if (panel->host_config.ext_bridge_mode)
 		return 0;
 
+	dsi_panel_update_last_backlight(panel, bl_lvl);
+
 	DSI_DEBUG("backlight type:%d lvl:%d\n", bl->type, bl_lvl);
 	switch (bl->type) {
 	case DSI_BACKLIGHT_WLED:
@@ -832,6 +849,7 @@ int dsi_panel_set_backlight(struct dsi_panel *panel, u32 bl_lvl)
 	if (rc)
 		DSI_ERR("[%s] unable to apply doze on, rc=%d\n", panel->name, rc);
 
+        dsi_panel_update_last_backlight(panel, bl_lvl);
 	return rc;
 }
 
