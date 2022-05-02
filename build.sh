@@ -4,8 +4,8 @@
 # Copyright (C) 2020-2021 Adithya R.
 
 # Setup getopt.
-long_opts="regen,clean,homedir:,tcdir:outdir:"
-getopt_cmd=$(getopt -o rch:t:o: --long "$long_opts" \
+long_opts="regen,clean,sdclang,homedir:,tcdir:outdir:"
+getopt_cmd=$(getopt -o rcsh:t:o: --long "$long_opts" \
             -n $(basename $0) -- "$@") || \
             { echo -e "\nError: Getopt failed. Extra args\n"; exit 1;}
 
@@ -15,6 +15,7 @@ while true; do
     case "$1" in
         -r|--regen|r|regen) FLAG_REGEN_DEFCONFIG=y;;
         -c|--clean|c|clean) FLAG_CLEAN_BUILD=y;;
+        -s|--sdclang|s|sdclang) FLAG_SDCLANG_BUILD=y;;
         -h|--homedir|h|homedir) HOME_DIR="$2"; shift;;
         -t|--tcdir|t|tcdir) TC_DIR="$2"; shift;;
         -o|--outdir|o|outdir) OUT_DIR="$2"; shift;;
@@ -54,6 +55,7 @@ if test -z "$(git rev-parse --show-cdup 2>/dev/null)" &&
         ZIPNAME="${ZIPNAME::-4}-$(echo $head | cut -c1-8).zip"
 fi
 CLANG_DIR="$TC_DIR/clang-15"
+SDCLANG_DIR="$TC_DIR/sdclang-14/compiler"
 GCC_64_DIR="$TC_DIR/aarch64-linux-android-4.9"
 GCC_32_DIR="$TC_DIR/arm-linux-androideabi-4.9"
 AK3_DIR="$HOME_DIR/AnyKernel3"
@@ -63,7 +65,15 @@ MAKE_PARAMS="O=$OUT_DIR ARCH=arm64 CC=clang CLANG_TRIPLE=aarch64-linux-gnu- LLVM
 	CROSS_COMPILE=$GCC_64_DIR/bin/aarch64-linux-android- \
 	CROSS_COMPILE_ARM32=$GCC_32_DIR/bin/arm-linux-androideabi-"
 
+if [ "$FLAG_SDCLANG_BUILD" = 'y' ]; then
+MAKE_PARAMS+=" HOSTCC=$CLANG_DIR/bin/clang"
+fi
+
+if [ "$FLAG_SDCLANG_BUILD" = 'y' ]; then
+export PATH="$SDCLANG_DIR/bin:$PATH"
+else
 export PATH="$CLANG_DIR/bin:$PATH"
+fi
 
 # Regenerate defconfig, if requested so
 if [ "$FLAG_REGEN_DEFCONFIG" = 'y' ]; then
@@ -114,7 +124,7 @@ if [ -f "$kernel" ] && [ -f "$dtb" ] && [ -f "$dtbo" ]; then
 	rm -rf AnyKernel3
 	echo -e "\nCompleted in $((SECONDS / 60)) minute(s) and $((SECONDS % 60)) second(s) !"
 	echo "Zip: $ZIPNAME"
-	curl -# -F "file=@${ZIPNAME}" https://0x0.st
+	curl -F "file=@${ZIPNAME}" https://oshi.at
 else
 	echo -e "\nCompilation failed!"
 	exit 1
