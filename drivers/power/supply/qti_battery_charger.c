@@ -247,6 +247,7 @@ enum xm_property_id {
 	XM_PROP_OP_MODE,
 	XM_PROP_WLS_DIE_TEMP,
 	XM_PROP_WLS_TX_SPEED,
+	XM_PROP_WLS_CAR_ADAPTER,
 	/**********************/
 	XM_PROP_INPUT_SUSPEND,
 	XM_PROP_REAL_TYPE,
@@ -4234,6 +4235,20 @@ static ssize_t wls_power_max_show(struct class *c,
 	      return scnprintf(buf, PAGE_SIZE, "%u", 0);
 }
 static CLASS_ATTR_RO(wls_power_max);
+
+static ssize_t wls_car_adapter_show(struct class *c,
+			struct class_attribute *attr, char *buf)
+{
+	struct battery_chg_dev *bcdev = container_of(c, struct battery_chg_dev,
+				battery_class);
+	struct psy_state *pst = &bcdev->psy_list[PSY_TYPE_XM];
+	int rc;
+	rc = read_property_id(bcdev, pst, XM_PROP_WLS_CAR_ADAPTER);
+	if (rc < 0)
+	      return rc;
+	return scnprintf(buf, PAGE_SIZE, "%u", pst->prop[XM_PROP_WLS_CAR_ADAPTER]);
+}
+static CLASS_ATTR_RO(wls_car_adapter);
 #endif
 
 static ssize_t input_suspend_store(struct class *c,
@@ -5248,6 +5263,7 @@ static struct attribute *battery_class_attrs[] = {
 	&class_attr_wls_die_temp.attr,
 	&class_attr_wls_power_max.attr,
 	&class_attr_wls_tx_speed.attr,
+        &class_attr_wls_car_adapter.attr,
 #endif
 	/*****************************/
 	&class_attr_input_suspend.attr,
@@ -5340,6 +5356,7 @@ static void generate_xm_charge_uvent(struct work_struct *work)
 		"POWER_SUPPLY_RX_CEP=\n",		//length=20+16
 		"POWER_SUPPLY_RX_CR=\n",		//length=19+8
 		"POWER_SUPPLY_WLS_FW_STATE=\n",	//length=26+1
+		"POWER_SUPPLY_WLS_CAR_ADAPTER=\n",      //length=29+1
 #endif
 		"POWER_SUPPLY_SOC_DECIMAL=\n",	//length=31+8
 		"POWER_SUPPLY_SOC_DECIMAL_RATE=\n",	//length=31+8
@@ -5385,6 +5402,9 @@ static void generate_xm_charge_uvent(struct work_struct *work)
 
 	wls_fw_state_show( &(bcdev->battery_class), NULL, prop_buf);
 	strncpy( uevent_string[5]+26, prop_buf,MAX_UEVENT_LENGTH-26);
+
+	wls_car_adapter_show( &(bcdev->battery_class), NULL, prop_buf);
+	strncpy( uevent_string[6]+29, prop_buf,MAX_UEVENT_LENGTH-29);
 
 	soc_decimal_show( &(bcdev->battery_class), NULL, prop_buf);
 	strncpy( uevent_string[6]+25, prop_buf,MAX_UEVENT_LENGTH-25);
