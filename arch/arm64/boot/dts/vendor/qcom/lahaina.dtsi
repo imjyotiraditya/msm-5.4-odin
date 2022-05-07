@@ -4677,7 +4677,6 @@
 		qcom,lan-rx-napi;
 		qcom,lan-rx-ring-size = <224>;
 		qcom,tx-napi;
-		qcom,wan-use-skb-page;
 		qcom,rmnet-ctl-enable;
 		qcom,ipa-uc-holb-monitor;
 		qcom,gsi_wdi_db_polling;
