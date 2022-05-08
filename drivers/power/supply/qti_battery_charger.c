@@ -1750,7 +1750,11 @@ static int battery_psy_get_prop(struct power_supply *psy,
 		pval->intval = bcdev->num_thermal_levels;
 		break;
 	case POWER_SUPPLY_PROP_CHARGE_COUNTER:
+#if defined(CONFIG_BQ_FUEL_GAUGE)
+		pval->intval = pst->prop[prop_id] / 100;
+#else
 		pval->intval = DIV_ROUND_CLOSEST(pst->prop[prop_id], 100);
+#endif
 		break;
 	default:
 		pval->intval = pst->prop[prop_id];
