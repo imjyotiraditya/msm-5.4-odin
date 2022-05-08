@@ -5162,7 +5162,6 @@ handle_fatal_error:
 	}
 
 	if (fatal_err_detected) {
-		cam_debug_hw_trigger(CAM_ISP);
 		cam_ife_csid_halt_csi2(csid_hw);
 		cam_csid_handle_hw_err_irq(csid_hw,
 			(event_type | CAM_ISP_HW_ERROR_CSID_FATAL), irq_status);

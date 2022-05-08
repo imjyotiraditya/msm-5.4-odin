@@ -1941,9 +1941,5 @@ int32_t cam_cci_core_cfg(struct v4l2_subdev *sd,
 
 	cci_ctrl->status = rc;
 
-	if (rc < 0) {
-		cam_debug_hw_trigger(CAM_CCI);
-	}
-
 	return rc;
 }

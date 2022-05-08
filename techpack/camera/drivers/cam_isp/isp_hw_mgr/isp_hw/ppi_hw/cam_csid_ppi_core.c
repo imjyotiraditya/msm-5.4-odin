@@ -348,7 +348,6 @@ irqreturn_t cam_csid_ppi_irq(int irq_num, void *data)
 
 handle_fatal_error:
 	if (fatal_err_detected) {
-		cam_debug_hw_trigger(CAM_ISP);
 		CAM_ERR(CAM_ISP, "PPI: %d irq_status:0x%x",
 			ppi_hw->hw_intf->hw_idx, irq_status);
 		for (i = 0; i < CAM_CSID_PPI_LANES_MAX; i++)
