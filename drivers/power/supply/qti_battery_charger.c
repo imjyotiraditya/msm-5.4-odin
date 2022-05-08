@@ -298,6 +298,7 @@ enum xm_property_id {
 	XM_PROP_FG1_TAMBIENT,
 	XM_PROP_FG1_TREMQ,
 	XM_PROP_FG1_TFULLQ,
+	XM_PROP_FG_VENDOR_ID,
 	XM_PROP_SHIPMODE_COUNT_RESET,
 	XM_PROP_SPORT_MODE,
 	XM_PROP_MAX,
@@ -5100,6 +5101,22 @@ static ssize_t fg1_tfullq_show(struct class *c,
 }
 static CLASS_ATTR_RO(fg1_tfullq);
 
+static ssize_t fg_vendor_show(struct class *c,
+					struct class_attribute *attr, char *buf)
+{
+	struct battery_chg_dev *bcdev = container_of(c, struct battery_chg_dev,
+						battery_class);
+	struct psy_state *pst = &bcdev->psy_list[PSY_TYPE_XM];
+	int rc;
+
+	rc = read_property_id(bcdev, pst, XM_PROP_FG_VENDOR_ID);
+	if (rc < 0)
+		return rc;
+
+	return scnprintf(buf, PAGE_SIZE, "%d\n", pst->prop[XM_PROP_FG_VENDOR_ID]);
+}
+static CLASS_ATTR_RO(fg_vendor);
+
 static ssize_t shipmode_count_reset_store(struct class *c,
 					struct class_attribute *attr,
 					const char *buf, size_t count)
@@ -5305,6 +5322,7 @@ static struct attribute *battery_class_attrs[] = {
 	&class_attr_fg1_tambient.attr,
 	&class_attr_fg1_tremq.attr,
 	&class_attr_fg1_tfullq.attr,
+	&class_attr_fg_vendor.attr,
 	&class_attr_shipmode_count_reset.attr,
 	&class_attr_sport_mode.attr,
 	NULL,
@@ -5449,6 +5467,7 @@ static void xm_charger_debug_info_print_work(struct work_struct *work)
 	int vbus_vol_uv, ibus_ua;
 	int interval = DISCHARGE_PERIOD_S;
 	union power_supply_propval val = {0, };
+	struct psy_state *pst = &bcdev->psy_list[PSY_TYPE_XM];
 
 	usb_psy = bcdev->psy_list[PSY_TYPE_USB].psy;
 	if (usb_psy != NULL) {
@@ -5474,6 +5493,10 @@ static void xm_charger_debug_info_print_work(struct work_struct *work)
 			ibus_ua = val.intval;
 		else
 			ibus_ua = 0;
+
+		rc = read_property_id(bcdev, pst, XM_PROP_FG_VENDOR_ID);
+		pr_err("chg_type= %s tl:= %d  ffc:= %d, pd_verifed:= %d, FG_VENDOR_ID:= %d\n",get_usb_type_name(pst->prop[XM_PROP_REAL_TYPE]),
+				bcdev->curr_thermal_level, pst->prop[XM_PROP_FASTCHGMODE], pst->prop[XM_PROP_PD_VERIFED], pst->prop[XM_PROP_FG_VENDOR_ID]);
 
 		pr_err("vbus_vol_uv: %d, ibus_ua: %d\n", vbus_vol_uv, ibus_ua);
 		interval = CHARGING_PERIOD_S;
