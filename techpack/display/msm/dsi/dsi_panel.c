@@ -3752,7 +3752,7 @@ exit:
 	mutex_unlock(&panel->panel_lock);
 }
 
-static ssize_t sysfs_fod_hbm_write(struct device *dev, struct device_attribute *attr,
+static ssize_t fod_hbm_store(struct device *dev, struct device_attribute *attr,
 				   const char *buf, size_t count)
 {
 	struct dsi_display *display;
@@ -3779,7 +3779,7 @@ static ssize_t sysfs_fod_hbm_write(struct device *dev, struct device_attribute *
 	return count;
 }
 
-static ssize_t sysfs_fod_ui_read(struct device *dev, struct device_attribute *attr,
+static ssize_t fod_ui_show(struct device *dev, struct device_attribute *attr,
 				 char *buf)
 {
 	struct dsi_display *display;
@@ -3801,7 +3801,7 @@ static ssize_t sysfs_fod_ui_read(struct device *dev, struct device_attribute *at
 	return snprintf(buf, PAGE_SIZE, "%d\n", status);
 }
 
-static ssize_t sysfs_doze_status_read(struct device *dev, struct device_attribute *attr,
+static ssize_t doze_status_show(struct device *dev, struct device_attribute *attr,
 				      char *buf)
 {
 	struct dsi_display *display;
@@ -3823,7 +3823,7 @@ static ssize_t sysfs_doze_status_read(struct device *dev, struct device_attribut
 	return snprintf(buf, PAGE_SIZE, "%d\n", status);
 }
 
-static ssize_t sysfs_doze_status_write(struct device *dev, struct device_attribute *attr,
+static ssize_t doze_status_store(struct device *dev, struct device_attribute *attr,
 				       const char *buf, size_t count)
 {
 	struct dsi_display *display;
@@ -3852,7 +3852,7 @@ static ssize_t sysfs_doze_status_write(struct device *dev, struct device_attribu
 	return count;
 }
 
-static ssize_t sysfs_doze_mode_read(struct device *dev, struct device_attribute *attr,
+static ssize_t doze_mode_show(struct device *dev, struct device_attribute *attr,
 				    char *buf)
 {
 	enum dsi_doze_mode_type doze_mode;
@@ -3874,7 +3874,7 @@ static ssize_t sysfs_doze_mode_read(struct device *dev, struct device_attribute 
 	return snprintf(buf, PAGE_SIZE, "%d\n", doze_mode);
 }
 
-static ssize_t sysfs_doze_mode_write(struct device *dev, struct device_attribute *attr,
+static ssize_t doze_mode_store(struct device *dev, struct device_attribute *attr,
 				     const char *buf, size_t count)
 {
 	struct dsi_display *display;
@@ -3908,10 +3908,10 @@ static ssize_t sysfs_doze_mode_write(struct device *dev, struct device_attribute
 	return count;
 }
 
-static DEVICE_ATTR(fod_hbm, 0200, NULL, sysfs_fod_hbm_write);
-static DEVICE_ATTR(fod_ui, 0400, sysfs_fod_ui_read, NULL);
-static DEVICE_ATTR(doze_status, 0644, sysfs_doze_status_read, sysfs_doze_status_write);
-static DEVICE_ATTR(doze_mode, 0644, sysfs_doze_mode_read, sysfs_doze_mode_write);
+static DEVICE_ATTR(fod_hbm, 0200, NULL, fod_hbm_store);
+static DEVICE_ATTR_RO(fod_ui);
+static DEVICE_ATTR_RW(doze_status);
+static DEVICE_ATTR_RW(doze_mode);
 
 static struct attribute *panel_attrs[] = {
 	&dev_attr_fod_hbm.attr,
