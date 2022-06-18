@@ -1068,8 +1068,14 @@ struct ufs_hba {
 	ANDROID_KABI_RESERVE(3);
 	ANDROID_KABI_RESERVE(4);
 
+#ifdef CONFIG_SCSI_UFSHCD_QTI
+	/* distinguish between resume and restore */
+	bool restore;
+	bool abort_triggered_wlun;
+#endif
+
 #if defined(CONFIG_UFSFEATURE)
-	struct ufsf_feature ufsf;
+        struct ufsf_feature ufsf;
 #endif
 };
 
