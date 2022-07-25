@@ -4288,6 +4288,8 @@
 				qcom,intents = <0x800  5
 						0x2000 3
 						0x4400 2>;
+				qcom,non-wake-svc = <0x51
+						0x190>;
 			};
 
 			qcom,msm_fastrpc_rpmsg {
