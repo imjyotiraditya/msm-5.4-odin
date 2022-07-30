@@ -4096,7 +4096,7 @@ static struct ppdu_info *dp_htt_process_tlv(struct dp_pdev *pdev,
 #endif /* FEATURE_PERPKT_INFO */
 
 #ifdef WLAN_FEATURE_PKT_CAPTURE_V2
-static void dp_htt_process_stats_tlv(struct dp_soc *soc,
+static void __maybe_unused dp_htt_process_stats_tlv(struct dp_soc *soc,
 				     qdf_nbuf_t htt_t2h_msg)
 {
 	uint32_t length;
