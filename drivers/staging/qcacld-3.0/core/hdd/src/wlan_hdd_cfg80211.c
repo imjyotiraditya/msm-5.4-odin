@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2012-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -173,7 +173,8 @@
 
 #define g_mode_rates_size (12)
 #define a_mode_rates_size (8)
-
+#define DRIVER_DISCONNECT_REASON_INDEX \
+	QCA_NL80211_VENDOR_SUBCMD_DRIVER_DISCONNECT_REASON_INDEX
 /**
  * rtt_is_initiator - Macro to check if the bitmap has any RTT roles set
  * @bitmap: The bitmap to be checked
@@ -1703,6 +1704,10 @@ static const struct nl80211_vendor_cmd_info wlan_hdd_cfg80211_vendor_events[] = 
 	[QCA_NL80211_VENDOR_SUBCMD_UPDATE_STA_INFO_INDEX] = {
 		.vendor_id = QCA_NL80211_VENDOR_ID,
 		.subcmd = QCA_NL80211_VENDOR_SUBCMD_UPDATE_STA_INFO,
+	},
+	[QCA_NL80211_VENDOR_SUBCMD_DRIVER_DISCONNECT_REASON_INDEX] = {
+		.vendor_id = QCA_NL80211_VENDOR_ID,
+		.subcmd = QCA_NL80211_VENDOR_SUBCMD_DRIVER_DISCONNECT_REASON,
 	},
 #ifdef WLAN_SUPPORT_TWT
 	FEATURE_TWT_VENDOR_EVENTS
@@ -4649,6 +4654,11 @@ roam_control_policy[QCA_ATTR_ROAM_CONTROL_MAX + 1] = {
 			.type = NLA_U32},
 	[QCA_ATTR_ROAM_CONTROL_USER_REASON] = {.type = NLA_U32},
 	[QCA_ATTR_ROAM_CONTROL_SCAN_SCHEME_TRIGGERS] = {.type = NLA_U32},
+	[QCA_ATTR_ROAM_CONTROL_HO_DELAY_FOR_RX] = {.type = NLA_U16},
+	[QCA_ATTR_ROAM_CONTROL_FULL_SCAN_NO_REUSE_PARTIAL_SCAN_FREQ] = {
+			.type = NLA_U8},
+	[QCA_ATTR_ROAM_CONTROL_FULL_SCAN_6GHZ_ONLY_ON_PRIOR_DISCOVERY] = {
+			.type = NLA_U8},
 };
 
 /**
@@ -5040,6 +5050,19 @@ hdd_send_roam_scan_period_to_sme(struct hdd_context *hdd_ctx,
 	return status;
 }
 
+/* Roam Hand-off delay range is 20 to 1000 msec */
+#define MIN_ROAM_HO_DELAY 20
+#define MAX_ROAM_HO_DELAY 1000
+
+/* Include/Exclude roam partial scan channels in full scan */
+#define INCLUDE_ROAM_PARTIAL_SCAN_FREQ 0
+#define EXCLUDE_ROAM_PARTIAL_SCAN_FREQ 1
+
+/* Include the supported 6 GHz PSC channels in full scan by default */
+#define INCLUDE_6GHZ_IN_FULL_SCAN_BY_DEF	0
+/* Include the 6 GHz channels in roam full scan only on prior discovery */
+#define INCLUDE_6GHZ_IN_FULL_SCAN_IF_DISC	1
+
 /**
  * hdd_set_roam_with_control_config() - Set roam control configuration
  * @hdd_ctx: HDD context
@@ -5231,6 +5254,60 @@ hdd_set_roam_with_control_config(struct hdd_context *hdd_ctx,
 		wlan_cm_roam_set_vendor_btm_params(hdd_ctx->psoc, &param);
 		/* Sends RSO update */
 		sme_send_vendor_btm_params(hdd_ctx->mac_handle, vdev_id);
+	}
+
+	attr = tb2[QCA_ATTR_ROAM_CONTROL_HO_DELAY_FOR_RX];
+	if (attr) {
+		value = nla_get_u16(attr);
+		if (value < MIN_ROAM_HO_DELAY || value > MAX_ROAM_HO_DELAY) {
+			hdd_err("Invalid roam HO delay value: %d", value);
+			return -EINVAL;
+		}
+
+		hdd_debug("Received roam HO delay value: %d", value);
+
+		status = ucfg_cm_roam_send_ho_delay_config(hdd_ctx->pdev,
+							   vdev_id, value);
+		if (QDF_IS_STATUS_ERROR(status))
+			hdd_err("failed to set hand-off delay");
+	}
+
+	attr = tb2[QCA_ATTR_ROAM_CONTROL_FULL_SCAN_NO_REUSE_PARTIAL_SCAN_FREQ];
+	if (attr) {
+		value = nla_get_u8(attr);
+		if (value < INCLUDE_ROAM_PARTIAL_SCAN_FREQ ||
+		    value > EXCLUDE_ROAM_PARTIAL_SCAN_FREQ) {
+			hdd_err("Invalid value %d to exclude partial scan freq",
+				value);
+			return -EINVAL;
+		}
+
+		hdd_debug("%s partial scan channels in roam full scan",
+			  value ? "Exclude" : "Include");
+
+		status = ucfg_cm_exclude_rm_partial_scan_freq(hdd_ctx->pdev,
+							      vdev_id, value);
+		if (QDF_IS_STATUS_ERROR(status))
+			hdd_err("Fail to exclude roam partial scan channels");
+	}
+
+	attr = tb2[QCA_ATTR_ROAM_CONTROL_FULL_SCAN_6GHZ_ONLY_ON_PRIOR_DISCOVERY];
+	if (attr) {
+		value = nla_get_u8(attr);
+		if (value < INCLUDE_6GHZ_IN_FULL_SCAN_BY_DEF ||
+		    value > INCLUDE_6GHZ_IN_FULL_SCAN_IF_DISC) {
+			hdd_err("Invalid value %d to decide inclusion of 6 GHz channels",
+				value);
+			return -EINVAL;
+		}
+
+		hdd_debug("Include 6 GHz channels in roam full scan by %s",
+			  value ? "prior discovery" : "default");
+
+		status = ucfg_cm_roam_full_scan_6ghz_on_disc(hdd_ctx->pdev,
+							     vdev_id, value);
+		if (QDF_IS_STATUS_ERROR(status))
+			hdd_err("Fail to decide inclusion of 6 GHz channels");
 	}
 
 	return qdf_status_to_os_return(status);
@@ -7171,6 +7248,9 @@ const struct nla_policy wlan_hdd_wifi_config_policy[
 	[QCA_WLAN_VENDOR_ATTR_CONFIG_TX_NSS] = {.type = NLA_U8 },
 	[QCA_WLAN_VENDOR_ATTR_CONFIG_RX_NSS] = {.type = NLA_U8 },
 	[QCA_WLAN_VENDOR_ATTR_CONFIG_FT_OVER_DS] = {.type = NLA_U8 },
+	[QCA_WLAN_VENDOR_ATTR_CONFIG_ARP_NS_OFFLOAD] = {.type = NLA_U8 },
+	[QCA_WLAN_VENDOR_ATTR_CONFIG_WFC_STATE] = {
+		.type = NLA_U8 },
 };
 
 static const struct nla_policy
@@ -8951,6 +9031,135 @@ static int hdd_set_nss(struct hdd_adapter *adapter,
 	return ret;
 }
 
+#ifdef FEATURE_WLAN_DYNAMIC_ARP_NS_OFFLOAD
+#define DYNAMIC_ARP_NS_ENABLE    1
+#define DYNAMIC_ARP_NS_DISABLE   0
+
+/**
+ * hdd_set_arp_ns_offload() - enable/disable arp/ns offload feature
+ * @adapter: hdd adapter
+ * @attr: pointer to nla attr
+ *
+ * Return: 0 on success, negative errno on failure
+ */
+static int hdd_set_arp_ns_offload(struct hdd_adapter *adapter,
+				  const struct nlattr *attr)
+{
+	uint8_t offload_state;
+	int errno;
+	QDF_STATUS qdf_status = QDF_STATUS_E_FAILURE;
+	struct hdd_context *hdd_ctx = WLAN_HDD_GET_CTX(adapter);
+	struct wlan_objmgr_vdev *vdev;
+
+	errno = wlan_hdd_validate_context(hdd_ctx);
+	if (errno)
+		return errno;
+
+	if (!ucfg_pmo_is_arp_offload_enabled(hdd_ctx->psoc) ||
+	    !ucfg_pmo_is_ns_offloaded(hdd_ctx->psoc)) {
+		hdd_err_rl("ARP/NS Offload is disabled by ini");
+		return -EINVAL;
+	}
+
+	if (!ucfg_pmo_is_active_mode_offloaded(hdd_ctx->psoc)) {
+		hdd_err_rl("active mode offload is disabled by ini");
+		return -EINVAL;
+	}
+
+	if (adapter->device_mode != QDF_STA_MODE &&
+	    adapter->device_mode != QDF_P2P_CLIENT_MODE) {
+		hdd_err_rl("only support on sta/p2p-cli mode");
+		return -EINVAL;
+	}
+
+	vdev = hdd_objmgr_get_vdev(adapter);
+	if (!vdev) {
+		hdd_err("vdev is NULL");
+		return -EINVAL;
+	}
+
+	offload_state = nla_get_u8(attr);
+
+	if (offload_state == DYNAMIC_ARP_NS_ENABLE)
+		qdf_status = ucfg_pmo_dynamic_arp_ns_offload_enable(vdev);
+	else if (offload_state == DYNAMIC_ARP_NS_DISABLE)
+		qdf_status = ucfg_pmo_dynamic_arp_ns_offload_disable(vdev);
+
+	if (QDF_IS_STATUS_SUCCESS(qdf_status)) {
+		if (offload_state == DYNAMIC_ARP_NS_ENABLE)
+			ucfg_pmo_dynamic_arp_ns_offload_runtime_allow(vdev);
+		else
+			ucfg_pmo_dynamic_arp_ns_offload_runtime_prevent(vdev);
+	}
+
+	hdd_objmgr_put_vdev(vdev);
+
+	if (QDF_IS_STATUS_ERROR(qdf_status)) {
+		if (qdf_status == QDF_STATUS_E_ALREADY) {
+			hdd_info_rl("already set arp/ns offload %d",
+				    offload_state);
+			return 0;
+		}
+		return qdf_status_to_os_return(qdf_status);
+	}
+
+	if (!hdd_is_vdev_in_conn_state(adapter)) {
+		hdd_info("set not in connect state, updated state %d",
+			 offload_state);
+		return 0;
+	}
+
+	if (offload_state == DYNAMIC_ARP_NS_ENABLE) {
+		hdd_enable_arp_offload(adapter,
+				       pmo_arp_ns_offload_dynamic_update);
+		hdd_enable_ns_offload(adapter,
+				      pmo_arp_ns_offload_dynamic_update);
+	} else if (offload_state == DYNAMIC_ARP_NS_DISABLE) {
+		hdd_disable_arp_offload(adapter,
+					pmo_arp_ns_offload_dynamic_update);
+		hdd_disable_ns_offload(adapter,
+				       pmo_arp_ns_offload_dynamic_update);
+	}
+
+	return 0;
+}
+
+#undef DYNAMIC_ARP_NS_ENABLE
+#undef DYNAMIC_ARP_NS_DISABLE
+#endif
+
+/**
+ * hdd_set_wfc_state() - Set wfc state
+ * @adapter: hdd adapter
+ * @attr: pointer to nla attr
+ *
+ * Return: 0 on success, negative on failure
+ */
+static int hdd_set_wfc_state(struct hdd_adapter *adapter,
+			     const struct nlattr *attr)
+{
+	uint8_t cfg_val;
+	enum pld_wfc_mode set_val;
+	struct hdd_context *hdd_ctx = WLAN_HDD_GET_CTX(adapter);
+	int errno;
+
+	errno = wlan_hdd_validate_context(hdd_ctx);
+	if (errno)
+		return errno;
+
+	cfg_val = nla_get_u8(attr);
+
+	hdd_debug_rl("set wfc state %d", cfg_val);
+	if (cfg_val == 0)
+		set_val = PLD_WFC_MODE_OFF;
+	else if (cfg_val == 1)
+		set_val = PLD_WFC_MODE_ON;
+	else
+		return -EINVAL;
+
+	return pld_set_wfc_mode(hdd_ctx->parent_dev, set_val);
+}
+
 #ifdef FEATURE_WLAN_DYNAMIC_NSS
 static int hdd_config_enable_dynamic_nss(struct hdd_adapter *adapter,
 			       const struct nlattr *attr)
@@ -9089,6 +9298,12 @@ static const struct independent_setters independent_setters[] = {
 #endif
 	{QCA_WLAN_VENDOR_ATTR_CONFIG_FT_OVER_DS,
 	 hdd_set_ft_over_ds},
+#ifdef FEATURE_WLAN_DYNAMIC_ARP_NS_OFFLOAD
+	{QCA_WLAN_VENDOR_ATTR_CONFIG_ARP_NS_OFFLOAD,
+	 hdd_set_arp_ns_offload},
+#endif
+	{QCA_WLAN_VENDOR_ATTR_CONFIG_WFC_STATE,
+	 hdd_set_wfc_state},
 };
 
 #ifdef WLAN_FEATURE_ELNA
@@ -16661,8 +16876,7 @@ const struct wiphy_vendor_command hdd_wiphy_vendor_commands[] = {
 		.info.vendor_id = QCA_NL80211_VENDOR_ID,
 		.info.subcmd = QCA_NL80211_VENDOR_SUBCMD_USABLE_CHANNELS,
 		.flags = WIPHY_VENDOR_CMD_NEED_WDEV |
-			WIPHY_VENDOR_CMD_NEED_NETDEV |
-			WIPHY_VENDOR_CMD_NEED_RUNNING,
+			WIPHY_VENDOR_CMD_NEED_NETDEV,
 		.doit = wlan_hdd_cfg80211_get_usable_channel,
 		vendor_command_policy(get_usable_channel_policy,
 				      QCA_WLAN_VENDOR_ATTR_MAX)
@@ -18157,6 +18371,9 @@ static int __wlan_hdd_cfg80211_change_iface(struct wiphy *wiphy,
 	policy_mgr_clear_concurrency_mode(hdd_ctx->psoc, adapter->device_mode);
 
 	if (hdd_is_client_mode(adapter->device_mode)) {
+		if (adapter->device_mode == QDF_STA_MODE)
+			hdd_cleanup_conn_info(adapter);
+
 		if (hdd_is_client_mode(new_mode)) {
 			errno = hdd_change_adapter_mode(adapter, new_mode);
 			if (errno) {
@@ -19674,7 +19891,8 @@ static int wlan_hdd_cfg80211_connect_start(struct hdd_adapter *adapter,
 				    const u8 *ssid, size_t ssid_len,
 				    const u8 *bssid, const u8 *bssid_hint,
 				    uint32_t oper_freq,
-				    enum nl80211_chan_width ch_width)
+				    enum nl80211_chan_width ch_width,
+				    uint32_t ch_freq_hint)
 {
 	int status = 0;
 	QDF_STATUS qdf_status = QDF_STATUS_SUCCESS;
@@ -19866,6 +20084,8 @@ static int wlan_hdd_cfg80211_connect_start(struct hdd_adapter *adapter,
 			roam_profile->ChannelInfo.freq_list = NULL;
 			roam_profile->ChannelInfo.numOfChannels = 0;
 		}
+
+		roam_profile->freq_hint = ch_freq_hint;
 
 		if (wlan_hdd_cfg80211_check_pmf_valid(roam_profile)) {
 			status = -EINVAL;
@@ -21683,6 +21903,7 @@ static int __wlan_hdd_cfg80211_connect(struct wiphy *wiphy,
 #endif
 	struct hdd_adapter *adapter = WLAN_HDD_GET_PRIV_PTR(ndev);
 	struct hdd_context *hdd_ctx;
+	uint32_t ch_freq_hint = 0;
 
 	hdd_enter();
 
@@ -21798,11 +22019,15 @@ static int __wlan_hdd_cfg80211_connect(struct wiphy *wiphy,
 	else
 		ch_freq = 0;
 
+	if (req->channel_hint)
+		ch_freq_hint = req->channel_hint->center_freq;
+
 	wlan_hdd_check_ht20_ht40_ind(hdd_ctx, adapter, req);
 
 	status = wlan_hdd_cfg80211_connect_start(adapter, req->ssid,
 						 req->ssid_len, req->bssid,
-						 bssid_hint, ch_freq, 0);
+						 bssid_hint, ch_freq, 0,
+						 ch_freq_hint);
 	if (status) {
 		wlan_hdd_cfg80211_clear_privacy(adapter);
 		hdd_err("connect failed");
@@ -22062,6 +22287,9 @@ wlan_hdd_cfg80211_indicate_disconnect(struct hdd_adapter *adapter,
 				      uint16_t disconnect_ies_len)
 {
 	enum ieee80211_reasoncode ieee80211_reason;
+	struct sk_buff *vendor_event;
+	int flags;
+	struct hdd_context *hdd_ctx = WLAN_HDD_GET_CTX(adapter);
 
 	ieee80211_reason = wlan_hdd_get_cfg80211_disconnect_reason(adapter,
 								   reason);
@@ -22071,6 +22299,26 @@ wlan_hdd_cfg80211_indicate_disconnect(struct hdd_adapter *adapter,
 		      adapter->last_disconnect_reason,
 		      hdd_qca_reason_to_str(adapter->last_disconnect_reason),
 		      locally_generated);
+
+	flags = cds_get_gfp_flags();
+	vendor_event =
+		cfg80211_vendor_event_alloc(
+			hdd_ctx->wiphy, &(adapter->wdev), NLMSG_HDRLEN +
+			sizeof(adapter->last_disconnect_reason) +
+			NLMSG_HDRLEN, DRIVER_DISCONNECT_REASON_INDEX, flags);
+	if (!vendor_event) {
+		hdd_err("cfg80211_vendor_event_alloc failed");
+		return;
+	}
+
+	if (nla_put_u32(vendor_event, DISCONNECT_REASON,
+			adapter->last_disconnect_reason)) {
+		hdd_err("DISCONNECT_REASON put fail");
+		kfree_skb(vendor_event);
+		goto send_disconnect;
+	}
+	cfg80211_vendor_event(vendor_event, flags);
+send_disconnect:
 	cfg80211_disconnected(adapter->dev, ieee80211_reason, disconnect_ies,
 			      disconnect_ies_len, locally_generated,
 			      GFP_KERNEL);
