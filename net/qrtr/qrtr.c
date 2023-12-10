@@ -268,7 +268,7 @@ static void qrtr_log_tx_msg(struct qrtr_node *node, struct qrtr_hdr_v1 *hdr,
 				  type, hdr->src_node_id);
 			if (le32_to_cpu(hdr->dst_node_id) == 0 ||
 			    le32_to_cpu(hdr->dst_node_id) == 3) {
-				place_marker("M - Modem QMI Readiness TX");
+				update_marker("M - Modem QMI Readiness TX");
 				pr_err("qrtr: Modem QMI Readiness TX cmd:0x%x node[0x%x]\n",
 				       type, hdr->src_node_id);
 			}
@@ -340,7 +340,7 @@ static void qrtr_log_rx_msg(struct qrtr_node *node, struct sk_buff *skb)
 				  "RX CTRL: cmd:0x%x node[0x%x]\n",
 				  cb->type, cb->src_node);
 			if (cb->src_node == 0 || cb->src_node == 3) {
-				place_marker("M - Modem QMI Readiness RX");
+				update_marker("M - Modem QMI Readiness RX");
 				pr_err("qrtr: Modem QMI Readiness RX cmd:0x%x node[0x%x]\n",
 				       cb->type, cb->src_node);
 			}
@@ -939,11 +939,27 @@ int qrtr_endpoint_post(struct qrtr_endpoint *ep, const void *data, size_t len)
 			return -ENODEV;
 		}
 
+		if (node->nid == 5) {
+			svc_id = qrtr_get_service_id(cb->src_node, cb->src_port);
+			if (svc_id > 0) {
+				for (i = 0; i < MAX_NON_WAKE_SVC_LEN; i++) {
+					if (svc_id == node->nonwake_svc[i]) {
+						wake = false;
+						break;
+					}
+				}
+			}
+		}
+
 		if (sock_queue_rcv_skb(&ipc->sk, skb))
 			goto err;
 
-		/* Force wakeup for all packets except for sensors */
-		if (node->nid != 9 && node->nid != 5)
+		/**
+		 * Force wakeup for all packets except for sensors and blacklisted services
+		 * from adsp side
+		 */
+		if ((node->nid != 9 && node->nid != 5) ||
+		    (node->nid == 5 && wake))
 			pm_wakeup_ws_event(node->ws, qrtr_wakeup_ms, true);
 
 		if (node->nid == 5) {

@@ -30,6 +30,7 @@
 
 #include "cgroup-internal.h"
 
+#include <linux/cpu.h>
 #include <linux/cred.h>
 #include <linux/errno.h>
 #include <linux/init_task.h>
@@ -752,25 +753,28 @@ static struct kmem_cache *cgrp_cset_link_pool;
  * reference-counted, to improve performance when child cgroups
  * haven't been created.
  */
-struct css_set init_css_set = {
-	.refcount		= REFCOUNT_INIT(1),
-	.dom_cset		= &init_css_set,
-	.tasks			= LIST_HEAD_INIT(init_css_set.tasks),
-	.mg_tasks		= LIST_HEAD_INIT(init_css_set.mg_tasks),
-	.dying_tasks		= LIST_HEAD_INIT(init_css_set.dying_tasks),
-	.task_iters		= LIST_HEAD_INIT(init_css_set.task_iters),
-	.threaded_csets		= LIST_HEAD_INIT(init_css_set.threaded_csets),
-	.cgrp_links		= LIST_HEAD_INIT(init_css_set.cgrp_links),
-	.mg_preload_node	= LIST_HEAD_INIT(init_css_set.mg_preload_node),
-	.mg_node		= LIST_HEAD_INIT(init_css_set.mg_node),
-
-	/*
-	 * The following field is re-initialized when this cset gets linked
-	 * in cgroup_init().  However, let's initialize the field
-	 * statically too so that the default cgroup can be accessed safely
-	 * early during boot.
-	 */
-	.dfl_cgrp		= &cgrp_dfl_root.cgrp,
+struct ext_css_set init_ext_css_set = {
+	.cset = {
+		.refcount               = REFCOUNT_INIT(1),
+		.dom_cset               = &init_css_set,
+		.tasks                  = LIST_HEAD_INIT(init_css_set.tasks),
+		.mg_tasks               = LIST_HEAD_INIT(init_css_set.mg_tasks),
+		.dying_tasks            = LIST_HEAD_INIT(init_css_set.dying_tasks),
+		.task_iters             = LIST_HEAD_INIT(init_css_set.task_iters),
+		.threaded_csets         = LIST_HEAD_INIT(init_css_set.threaded_csets),
+		.cgrp_links             = LIST_HEAD_INIT(init_css_set.cgrp_links),
+		.mg_preload_node        = LIST_HEAD_INIT(init_css_set.mg_preload_node),
+		.mg_node                = LIST_HEAD_INIT(init_css_set.mg_node),
+		/*
+		 * The following field is re-initialized when this cset gets linked
+		 * in cgroup_init().  However, let's initialize the field
+		 * statically too so that the default cgroup can be accessed safely
+		 * early during boot.
+		 */
+		.dfl_cgrp               = &cgrp_dfl_root.cgrp,
+	},
+	.mg_src_preload_node	= LIST_HEAD_INIT(init_ext_css_set.mg_src_preload_node),
+	.mg_dst_preload_node	= LIST_HEAD_INIT(init_ext_css_set.mg_dst_preload_node),
 };
 
 static int css_set_count	= 1;	/* 1 for init_css_set */
@@ -1198,6 +1202,7 @@ static struct css_set *find_css_set(struct css_set *old_cset,
 				    struct cgroup *cgrp)
 {
 	struct cgroup_subsys_state *template[CGROUP_SUBSYS_COUNT] = { };
+	struct ext_css_set *ext_cset;
 	struct css_set *cset;
 	struct list_head tmp_links;
 	struct cgrp_cset_link *link;
@@ -1218,9 +1223,10 @@ static struct css_set *find_css_set(struct css_set *old_cset,
 	if (cset)
 		return cset;
 
-	cset = kzalloc(sizeof(*cset), GFP_KERNEL);
-	if (!cset)
+	ext_cset = kzalloc(sizeof(*ext_cset), GFP_KERNEL);
+	if (!ext_cset)
 		return NULL;
+	cset = &ext_cset->cset;
 
 	/* Allocate all the cgrp_cset_link objects that we'll need */
 	if (allocate_cgrp_cset_links(cgroup_root_count, &tmp_links) < 0) {
@@ -1238,6 +1244,8 @@ static struct css_set *find_css_set(struct css_set *old_cset,
 	INIT_HLIST_NODE(&cset->hlist);
 	INIT_LIST_HEAD(&cset->cgrp_links);
 	INIT_LIST_HEAD(&cset->mg_preload_node);
+	INIT_LIST_HEAD(&ext_cset->mg_src_preload_node);
+	INIT_LIST_HEAD(&ext_cset->mg_dst_preload_node);
 	INIT_LIST_HEAD(&cset->mg_node);
 
 	/* Copy the set of subsystem state objects generated in
@@ -1738,7 +1746,7 @@ int rebind_subsystems(struct cgroup_root *dst_root, u16 ss_mask)
 {
 	struct cgroup *dcgrp = &dst_root->cgrp;
 	struct cgroup_subsys *ss;
-	int ssid, i, ret;
+	int ssid, ret;
 	u16 dfl_disable_ss_mask = 0;
 
 	lockdep_assert_held(&cgroup_mutex);
@@ -1782,7 +1790,8 @@ int rebind_subsystems(struct cgroup_root *dst_root, u16 ss_mask)
 		struct cgroup_root *src_root = ss->root;
 		struct cgroup *scgrp = &src_root->cgrp;
 		struct cgroup_subsys_state *css = cgroup_css(scgrp, ss);
-		struct css_set *cset;
+		struct css_set *cset, *cset_pos;
+		struct css_task_iter *it;
 
 		WARN_ON(!css || cgroup_css(dcgrp, ss));
 
@@ -1800,9 +1809,22 @@ int rebind_subsystems(struct cgroup_root *dst_root, u16 ss_mask)
 		css->cgroup = dcgrp;
 
 		spin_lock_irq(&css_set_lock);
-		hash_for_each(css_set_table, i, cset, hlist)
+		WARN_ON(!list_empty(&dcgrp->e_csets[ss->id]));
+		list_for_each_entry_safe(cset, cset_pos, &scgrp->e_csets[ss->id],
+					 e_cset_node[ss->id]) {
 			list_move_tail(&cset->e_cset_node[ss->id],
 				       &dcgrp->e_csets[ss->id]);
+			/*
+			 * all css_sets of scgrp together in same order to dcgrp,
+			 * patch in-flight iterators to preserve correct iteration.
+			 * since the iterator is always advanced right away and
+			 * finished when it->cset_pos meets it->cset_head, so only
+			 * update it->cset_head is enough here.
+			 */
+			list_for_each_entry(it, &cset->task_iters, iters_node)
+				if (it->cset_head == &scgrp->e_csets[ss->id])
+					it->cset_head = &dcgrp->e_csets[ss->id];
+		}
 		spin_unlock_irq(&css_set_lock);
 
 		/* default hierarchy doesn't enable controllers by default */
@@ -2393,6 +2415,47 @@ int task_cgroup_path(struct task_struct *task, char *buf, size_t buflen)
 EXPORT_SYMBOL_GPL(task_cgroup_path);
 
 /**
+ * cgroup_attach_lock - Lock for ->attach()
+ * @lock_threadgroup: whether to down_write cgroup_threadgroup_rwsem
+ *
+ * cgroup migration sometimes needs to stabilize threadgroups against forks and
+ * exits by write-locking cgroup_threadgroup_rwsem. However, some ->attach()
+ * implementations (e.g. cpuset), also need to disable CPU hotplug.
+ * Unfortunately, letting ->attach() operations acquire cpus_read_lock() can
+ * lead to deadlocks.
+ *
+ * Bringing up a CPU may involve creating and destroying tasks which requires
+ * read-locking threadgroup_rwsem, so threadgroup_rwsem nests inside
+ * cpus_read_lock(). If we call an ->attach() which acquires the cpus lock while
+ * write-locking threadgroup_rwsem, the locking order is reversed and we end up
+ * waiting for an on-going CPU hotplug operation which in turn is waiting for
+ * the threadgroup_rwsem to be released to create new tasks. For more details:
+ *
+ *   http://lkml.kernel.org/r/20220711174629.uehfmqegcwn2lqzu@wubuntu
+ *
+ * Resolve the situation by always acquiring cpus_read_lock() before optionally
+ * write-locking cgroup_threadgroup_rwsem. This allows ->attach() to assume that
+ * CPU hotplug is disabled on entry.
+ */
+static void cgroup_attach_lock(bool lock_threadgroup)
+{
+	cpus_read_lock();
+	if (lock_threadgroup)
+		percpu_down_write(&cgroup_threadgroup_rwsem);
+}
+
+/**
+ * cgroup_attach_unlock - Undo cgroup_attach_lock()
+ * @lock_threadgroup: whether to up_write cgroup_threadgroup_rwsem
+ */
+static void cgroup_attach_unlock(bool lock_threadgroup)
+{
+	if (lock_threadgroup)
+		percpu_up_write(&cgroup_threadgroup_rwsem);
+	cpus_read_unlock();
+}
+
+/**
  * cgroup_migrate_add_task - add a migration target task to a migration context
  * @task: target task
  * @mgctx: target migration context
@@ -2647,22 +2710,28 @@ int cgroup_migrate_vet_dst(struct cgroup *dst_cgrp)
  */
 void cgroup_migrate_finish(struct cgroup_mgctx *mgctx)
 {
-	LIST_HEAD(preloaded);
-	struct css_set *cset, *tmp_cset;
+	struct ext_css_set *cset, *tmp_cset;
 
 	lockdep_assert_held(&cgroup_mutex);
 
 	spin_lock_irq(&css_set_lock);
 
-	list_splice_tail_init(&mgctx->preloaded_src_csets, &preloaded);
-	list_splice_tail_init(&mgctx->preloaded_dst_csets, &preloaded);
+	list_for_each_entry_safe(cset, tmp_cset, &mgctx->preloaded_src_csets,
+				 mg_src_preload_node) {
+		cset->cset.mg_src_cgrp = NULL;
+		cset->cset.mg_dst_cgrp = NULL;
+		cset->cset.mg_dst_cset = NULL;
+		list_del_init(&cset->mg_src_preload_node);
+		put_css_set_locked(&cset->cset);
+	}
 
-	list_for_each_entry_safe(cset, tmp_cset, &preloaded, mg_preload_node) {
-		cset->mg_src_cgrp = NULL;
-		cset->mg_dst_cgrp = NULL;
-		cset->mg_dst_cset = NULL;
-		list_del_init(&cset->mg_preload_node);
-		put_css_set_locked(cset);
+	list_for_each_entry_safe(cset, tmp_cset, &mgctx->preloaded_dst_csets,
+				 mg_dst_preload_node) {
+		cset->cset.mg_src_cgrp = NULL;
+		cset->cset.mg_dst_cgrp = NULL;
+		cset->cset.mg_dst_cset = NULL;
+		list_del_init(&cset->mg_dst_preload_node);
+		put_css_set_locked(&cset->cset);
 	}
 
 	spin_unlock_irq(&css_set_lock);
@@ -2689,6 +2758,7 @@ void cgroup_migrate_add_src(struct css_set *src_cset,
 			    struct cgroup_mgctx *mgctx)
 {
 	struct cgroup *src_cgrp;
+	struct ext_css_set *ext_src_cset;
 
 	lockdep_assert_held(&cgroup_mutex);
 	lockdep_assert_held(&css_set_lock);
@@ -2702,8 +2772,9 @@ void cgroup_migrate_add_src(struct css_set *src_cset,
 		return;
 
 	src_cgrp = cset_cgroup_from_root(src_cset, dst_cgrp->root);
+	ext_src_cset = container_of(src_cset, struct ext_css_set, cset);
 
-	if (!list_empty(&src_cset->mg_preload_node))
+	if (!list_empty(&ext_src_cset->mg_src_preload_node))
 		return;
 
 	WARN_ON(src_cset->mg_src_cgrp);
@@ -2714,7 +2785,7 @@ void cgroup_migrate_add_src(struct css_set *src_cset,
 	src_cset->mg_src_cgrp = src_cgrp;
 	src_cset->mg_dst_cgrp = dst_cgrp;
 	get_css_set(src_cset);
-	list_add_tail(&src_cset->mg_preload_node, &mgctx->preloaded_src_csets);
+	list_add_tail(&ext_src_cset->mg_src_preload_node, &mgctx->preloaded_src_csets);
 }
 
 /**
@@ -2733,20 +2804,23 @@ void cgroup_migrate_add_src(struct css_set *src_cset,
  */
 int cgroup_migrate_prepare_dst(struct cgroup_mgctx *mgctx)
 {
-	struct css_set *src_cset, *tmp_cset;
+	struct ext_css_set *ext_src_set, *tmp_cset;
 
 	lockdep_assert_held(&cgroup_mutex);
 
 	/* look up the dst cset for each src cset and link it to src */
-	list_for_each_entry_safe(src_cset, tmp_cset, &mgctx->preloaded_src_csets,
-				 mg_preload_node) {
+	list_for_each_entry_safe(ext_src_set, tmp_cset, &mgctx->preloaded_src_csets,
+				 mg_src_preload_node) {
+		struct css_set *src_cset = &ext_src_set->cset;
 		struct css_set *dst_cset;
+		struct ext_css_set *ext_dst_cset;
 		struct cgroup_subsys *ss;
 		int ssid;
 
 		dst_cset = find_css_set(src_cset, src_cset->mg_dst_cgrp);
 		if (!dst_cset)
 			return -ENOMEM;
+		ext_dst_cset = container_of(dst_cset, struct ext_css_set, cset);
 
 		WARN_ON_ONCE(src_cset->mg_dst_cset || dst_cset->mg_dst_cset);
 
@@ -2758,7 +2832,7 @@ int cgroup_migrate_prepare_dst(struct cgroup_mgctx *mgctx)
 		if (src_cset == dst_cset) {
 			src_cset->mg_src_cgrp = NULL;
 			src_cset->mg_dst_cgrp = NULL;
-			list_del_init(&src_cset->mg_preload_node);
+			list_del_init(&ext_src_set->mg_src_preload_node);
 			put_css_set(src_cset);
 			put_css_set(dst_cset);
 			continue;
@@ -2766,8 +2840,8 @@ int cgroup_migrate_prepare_dst(struct cgroup_mgctx *mgctx)
 
 		src_cset->mg_dst_cset = dst_cset;
 
-		if (list_empty(&dst_cset->mg_preload_node))
-			list_add_tail(&dst_cset->mg_preload_node,
+		if (list_empty(&ext_dst_cset->mg_dst_preload_node))
+			list_add_tail(&ext_dst_cset->mg_dst_preload_node,
 				      &mgctx->preloaded_dst_csets);
 		else
 			put_css_set(dst_cset);
@@ -2866,8 +2940,8 @@ int cgroup_attach_task(struct cgroup *dst_cgrp, struct task_struct *leader,
 	return ret;
 }
 
-struct task_struct *cgroup_procs_write_start(char *buf, bool threadgroup)
-	__acquires(&cgroup_threadgroup_rwsem)
+struct task_struct *cgroup_procs_write_start(char *buf, bool threadgroup,
+					     bool *threadgroup_locked)
 {
 	struct task_struct *tsk;
 	pid_t pid;
@@ -2875,7 +2949,17 @@ struct task_struct *cgroup_procs_write_start(char *buf, bool threadgroup)
 	if (kstrtoint(strstrip(buf), 0, &pid) || pid < 0)
 		return ERR_PTR(-EINVAL);
 
-	percpu_down_write(&cgroup_threadgroup_rwsem);
+	/*
+	 * If we migrate a single thread, we don't care about threadgroup
+	 * stability. If the thread is `current`, it won't exit(2) under our
+	 * hands or change PID through exec(2). We exclude
+	 * cgroup_update_dfl_csses and other cgroup_{proc,thread}s_write
+	 * callers by cgroup_mutex.
+	 * Therefore, we can skip the global lock.
+	 */
+	lockdep_assert_held(&cgroup_mutex);
+	*threadgroup_locked = pid || threadgroup;
+	cgroup_attach_lock(*threadgroup_locked);
 
 	rcu_read_lock();
 	if (pid) {
@@ -2906,14 +2990,14 @@ struct task_struct *cgroup_procs_write_start(char *buf, bool threadgroup)
 	goto out_unlock_rcu;
 
 out_unlock_threadgroup:
-	percpu_up_write(&cgroup_threadgroup_rwsem);
+	cgroup_attach_unlock(*threadgroup_locked);
+	*threadgroup_locked = false;
 out_unlock_rcu:
 	rcu_read_unlock();
 	return tsk;
 }
 
-void cgroup_procs_write_finish(struct task_struct *task)
-	__releases(&cgroup_threadgroup_rwsem)
+void cgroup_procs_write_finish(struct task_struct *task, bool threadgroup_locked)
 {
 	struct cgroup_subsys *ss;
 	int ssid;
@@ -2921,7 +3005,8 @@ void cgroup_procs_write_finish(struct task_struct *task)
 	/* release reference from cgroup_procs_write_start() */
 	put_task_struct(task);
 
-	percpu_up_write(&cgroup_threadgroup_rwsem);
+	cgroup_attach_unlock(threadgroup_locked);
+
 	for_each_subsys(ss, ssid)
 		if (ss->post_attach)
 			ss->post_attach();
@@ -2975,12 +3060,11 @@ static int cgroup_update_dfl_csses(struct cgroup *cgrp)
 	DEFINE_CGROUP_MGCTX(mgctx);
 	struct cgroup_subsys_state *d_css;
 	struct cgroup *dsct;
-	struct css_set *src_cset;
+	bool has_tasks;
+	struct ext_css_set *ext_src_set;
 	int ret;
 
 	lockdep_assert_held(&cgroup_mutex);
-
-	percpu_down_write(&cgroup_threadgroup_rwsem);
 
 	/* look up all csses currently attached to @cgrp's subtree */
 	spin_lock_irq(&css_set_lock);
@@ -2992,17 +3076,27 @@ static int cgroup_update_dfl_csses(struct cgroup *cgrp)
 	}
 	spin_unlock_irq(&css_set_lock);
 
+	/*
+	 * We need to write-lock threadgroup_rwsem while migrating tasks.
+	 * However, if there are no source csets for @cgrp, changing its
+	 * controllers isn't gonna produce any task migrations and the
+	 * write-locking can be skipped safely.
+	 */
+	has_tasks = !list_empty(&mgctx.preloaded_src_csets);
+	cgroup_attach_lock(has_tasks);
+
 	/* NULL dst indicates self on default hierarchy */
 	ret = cgroup_migrate_prepare_dst(&mgctx);
 	if (ret)
 		goto out_finish;
 
 	spin_lock_irq(&css_set_lock);
-	list_for_each_entry(src_cset, &mgctx.preloaded_src_csets, mg_preload_node) {
+	list_for_each_entry(ext_src_set, &mgctx.preloaded_src_csets,
+			    mg_src_preload_node) {
 		struct task_struct *task, *ntask;
 
 		/* all tasks in src_csets need to be migrated */
-		list_for_each_entry_safe(task, ntask, &src_cset->tasks, cg_list)
+		list_for_each_entry_safe(task, ntask, &ext_src_set->cset.tasks, cg_list)
 			cgroup_migrate_add_task(task, &mgctx);
 	}
 	spin_unlock_irq(&css_set_lock);
@@ -3010,7 +3104,7 @@ static int cgroup_update_dfl_csses(struct cgroup *cgrp)
 	ret = cgroup_migrate_execute(&mgctx);
 out_finish:
 	cgroup_migrate_finish(&mgctx);
-	percpu_up_write(&cgroup_threadgroup_rwsem);
+	cgroup_attach_unlock(has_tasks);
 	return ret;
 }
 
@@ -4856,12 +4950,13 @@ static ssize_t cgroup_procs_write(struct kernfs_open_file *of,
 	struct task_struct *task;
 	const struct cred *saved_cred;
 	ssize_t ret;
+	bool threadgroup_locked;
 
 	dst_cgrp = cgroup_kn_lock_live(of->kn, false);
 	if (!dst_cgrp)
 		return -ENODEV;
 
-	task = cgroup_procs_write_start(buf, true);
+	task = cgroup_procs_write_start(buf, true, &threadgroup_locked);
 	ret = PTR_ERR_OR_ZERO(task);
 	if (ret)
 		goto out_unlock;
@@ -4887,7 +4982,7 @@ static ssize_t cgroup_procs_write(struct kernfs_open_file *of,
 	ret = cgroup_attach_task(dst_cgrp, task, true);
 
 out_finish:
-	cgroup_procs_write_finish(task);
+	cgroup_procs_write_finish(task, threadgroup_locked);
 out_unlock:
 	cgroup_kn_unlock(of->kn);
 
@@ -4907,6 +5002,7 @@ static ssize_t cgroup_threads_write(struct kernfs_open_file *of,
 	struct task_struct *task;
 	const struct cred *saved_cred;
 	ssize_t ret;
+	bool locked;
 
 	buf = strstrip(buf);
 
@@ -4914,7 +5010,7 @@ static ssize_t cgroup_threads_write(struct kernfs_open_file *of,
 	if (!dst_cgrp)
 		return -ENODEV;
 
-	task = cgroup_procs_write_start(buf, false);
+	task = cgroup_procs_write_start(buf, false, &locked);
 	ret = PTR_ERR_OR_ZERO(task);
 	if (ret)
 		goto out_unlock;
@@ -4945,7 +5041,7 @@ static ssize_t cgroup_threads_write(struct kernfs_open_file *of,
 	ret = cgroup_attach_task(dst_cgrp, task, false);
 
 out_finish:
-	cgroup_procs_write_finish(task);
+	cgroup_procs_write_finish(task, locked);
 out_unlock:
 	cgroup_kn_unlock(of->kn);
 

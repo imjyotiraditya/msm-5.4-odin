@@ -573,7 +573,9 @@ static void usb_cser_resume(struct usb_function *f)
 	if (port->setup_pending) {
 		pr_info("%s: start_rx called due to rx_out error.\n", __func__);
 		port->setup_pending = false;
+		spin_unlock_irqrestore(&port->port_lock, flags);
 		usb_cser_start_rx(port);
+		spin_lock_irqsave(&port->port_lock, flags);
 	}
 	in = port->port_usb.in;
 	/* process any pending requests */
@@ -1615,6 +1617,7 @@ static long f_cdev_ioctl(struct file *fp, unsigned int cmd,
 	int i = 0;
 	uint32_t val;
 	struct f_cdev *port;
+	unsigned long flags;
 
 	port = fp->private_data;
 	if (!port) {
@@ -1639,7 +1642,9 @@ static long f_cdev_ioctl(struct file *fp, unsigned int cmd,
 		ret = f_cdev_tiocmget(port);
 		if (ret >= 0) {
 			ret = put_user(ret, (uint32_t *)arg);
+			spin_lock_irqsave(&port->port_lock, flags);
 			port->cbits_updated = false;
+			spin_unlock_irqrestore(&port->port_lock, flags);
 		}
 		break;
 	default:
@@ -1656,6 +1661,7 @@ static void usb_cser_notify_modem(void *fport, int ctrl_bits)
 	int temp;
 	struct f_cdev *port = fport;
 	struct cserial *cser;
+	unsigned long flags;
 
 	cser = &port->port_usb;
 	if (!port) {
@@ -1670,8 +1676,10 @@ static void usb_cser_notify_modem(void *fport, int ctrl_bits)
 	if (temp == port->cbits_to_modem)
 		return;
 
+	spin_lock_irqsave(&port->port_lock, flags);
 	port->cbits_to_modem = temp;
 	port->cbits_updated = true;
+	spin_unlock_irqrestore(&port->port_lock, flags);
 
 	 /* if DTR is high, update latest modem info to laptop */
 	if (port->cbits_to_modem & TIOCM_DTR) {
